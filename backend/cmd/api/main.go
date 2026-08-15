@@ -1,21 +1,33 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/lhilove/security-copilot/internal/auth"
 	"github.com/lhilove/security-copilot/internal/config"
+	"github.com/lhilove/security-copilot/internal/database"
 )
 
 func main() {
+	// load the configuration from environment variables or .env file
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	githubAuth := auth.NewGitHubAuth(cfg)
+	// establish a connection to the PostgreSQL database using the provided database URL
+	db, err := database.Connect(context.Background(), cfg.DatabaseURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	log.Println("Database connection established")
+
+	githubAuth := auth.NewGitHubAuth(cfg) // Initialize GitHub OAuth with the loaded configuration
 
 	router := gin.Default()
 

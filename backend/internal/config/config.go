@@ -11,6 +11,7 @@ type Config struct {
 	GitHubClientID     string
 	GitHubClientSecret string
 	GitHubRedirectURL  string
+	DatabaseURL        string
 }
 
 func Load() (*Config, error) {
@@ -21,6 +22,7 @@ func Load() (*Config, error) {
 		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
 		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
 		GitHubRedirectURL:  os.Getenv("GITHUB_REDIRECT_URL"),
+		DatabaseURL:        os.Getenv("DATABASE_URL"),
 	}
 
 	if cfg.GitHubClientID == "" {
@@ -33,6 +35,10 @@ func Load() (*Config, error) {
 
 	if cfg.GitHubRedirectURL == "" {
 		return nil, fmt.Errorf("GITHUB_REDIRECT_URL is not configured")
+	}
+
+	if cfg.DatabaseURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL is not configured")
 	}
 
 	return cfg, nil

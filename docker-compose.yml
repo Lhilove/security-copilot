@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: security-copilot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: security_copilot
+      POSTGRES_USER: security_copilot
+      POSTGRES_PASSWORD: security_copilot_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
