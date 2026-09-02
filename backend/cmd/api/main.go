@@ -2,36 +2,46 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"log"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/lhilove/security-copilot/internal/auth"
 	"github.com/lhilove/security-copilot/internal/config"
+	"github.com/lhilove/security-copilot/internal/crypto"
 	"github.com/lhilove/security-copilot/internal/database"
 )
 
 func main() {
-	// load the configuration from environment variables or .env file
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// establish a connection to the PostgreSQL database using the provided database URL
+	// Run migrations before opening the connection pool
+	if err := database.Migrate(cfg.DatabaseURL, cfg.MigrationsPath); err != nil {
+		log.Fatalf("run migrations: %v", err)
+	}
+
+	log.Println("Database migrations applied")
+
 	db, err := database.Connect(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
+	userRepo := database.NewUserRepository(db)
+	connRepo := database.NewGitHubConnectionRepository(db)
 
 	log.Println("Database connection established")
 
-	githubAuth := auth.NewGitHubAuth(cfg) // Initialize GitHub OAuth with the loaded configuration
+	githubAuth := auth.NewGitHubAuth(cfg)
 
 	router := gin.Default()
+	router.SetTrustedProxies(nil) // no proxies trusted in development
 
-	//
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"status":  "ok",
@@ -39,98 +49,116 @@ func main() {
 		})
 	})
 
-	// GitHub OAuth routes
 	router.GET("/api/v1/auth/github", func(c *gin.Context) {
-		// Generate a random state string for CSRF protection
 		state, err := githubAuth.GenerateState()
 		if err != nil {
-			c.JSON(500, gin.H{
-				"error": "failed to generate OAuth state",
-			})
+			c.JSON(500, gin.H{"error": "failed to generate OAuth state"})
 			return
 		}
-		// Set the state in a cookie for later validation
-		c.SetCookie(
-			"oauth_state", // Cookie name
-			state,
-			600, // 10 minutes
-			"/", // Cookie path
-			"",
-			false,
-			true,
-		)
 
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name:     "oauth_state",
+			Value:    state,
+			MaxAge:   600,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+		})
 		c.Redirect(302, githubAuth.LoginURL(state))
 	})
 
-	// GitHub OAuth callback route
 	router.GET("/api/v1/auth/github/callback", func(c *gin.Context) {
-		code := c.Query("code")           // Get the authorization code from the query string
-		receivedState := c.Query("state") // Get the state parameter from the query string
+		code := c.Query("code")
+		receivedState := c.Query("state")
 
-		// Validate the received state against the expected state
 		if code == "" {
-			c.JSON(400, gin.H{
-				"error": "missing authorization code",
-			})
-			return
-		}
-		// Retrieve the expected state from the cookie
-		expectedState, err := c.Cookie("oauth_state")
-		if err != nil {
-			c.JSON(400, gin.H{
-				"error": "missing OAuth state",
-			})
+			c.JSON(400, gin.H{"error": "missing authorization code"})
 			return
 		}
 
-		// Validate the received state against the expected state
+		cookie, err := c.Request.Cookie("oauth_state")
+		if err != nil {
+			log.Printf("oauth_state cookie missing: %v", err)
+			c.JSON(400, gin.H{"error": "missing OAuth state"})
+			return
+		}
+
+		expectedState := cookie.Value
+
 		if !auth.ValidateState(expectedState, receivedState) {
-			c.JSON(400, gin.H{
-				"error": "invalid OAuth state",
-			})
+			c.JSON(400, gin.H{"error": "invalid OAuth state"})
 			return
 		}
 
-		// State has been verified. It should not be reusable.
-		c.SetCookie(
-			"oauth_state",
-			"",
-			-1,  // Delete the cookie by setting a negative max age
-			"/", // Cookie path
-			"",
-			false, // Not secure (for development purposes)
-			true,  // HttpOnly
-		)
+		// Delete the oauth_state cookie after validation
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name:     "oauth_state",
+			Value:    "",
+			MaxAge:   -1,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+		})
 
-		// Exchange the authorization code for an access token
-		token, err := githubAuth.ExchangeCode(
+		token, err := githubAuth.ExchangeCode(c.Request.Context(), code)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "failed to exchange authorization code"})
+			return
+		}
+
+		githubUser, err := githubAuth.GetUser(c.Request.Context(), token)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "failed to retrieve GitHub user"})
+			return
+		}
+
+		// Upsert the user
+		dbUser, err := userRepo.UpsertUser(
 			c.Request.Context(),
-			code,
+			githubUser.ID,
+			githubUser.Login,
+			githubUser.Email,
 		)
 		if err != nil {
-			c.JSON(500, gin.H{
-				"error": "failed to exchange authorization code",
-			})
+			log.Printf("failed to save user: %v", err)
+			c.JSON(500, gin.H{"error": "failed to save user"})
 			return
 		}
 
-		// Retrieve the GitHub user information using the access token
-		user, err := githubAuth.GetUser(
-			c.Request.Context(),
-			token,
-		)
+		// Encrypt the token
+		encryptedToken, err := crypto.Encrypt(cfg.EncryptionKey, []byte(token.AccessToken))
 		if err != nil {
-			c.JSON(500, gin.H{
-				"error": "failed to retrieve GitHub user",
-			})
+			c.JSON(500, gin.H{"error": "failed to encrypt token"})
 			return
 		}
 
-		// return the successful response with the user information
+		// Base64-encode for safe storage in TEXT column
+		encodedToken := base64.StdEncoding.EncodeToString(encryptedToken)
+
+		// Store the connection
+		if err := connRepo.UpsertConnection(
+			c.Request.Context(),
+			dbUser.ID,
+			encodedToken,
+		); err != nil {
+			c.JSON(500, gin.H{"error": "failed to save github connection"})
+			return
+		}
+
+		// Store the connection
+		if err := connRepo.UpsertConnection(
+			c.Request.Context(),
+			dbUser.ID,
+			encodedToken,
+		); err != nil {
+			log.Printf("failed to save github connection: %v", err)
+			c.JSON(500, gin.H{"error": "failed to save github connection"})
+			return
+		}
+
 		c.JSON(200, gin.H{
 			"message": "GitHub connected successfully",
-			"user":    user,
+			"user":    dbUser,
 		})
 	})
 

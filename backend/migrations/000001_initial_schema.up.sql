@@ -33,3 +33,25 @@ CREATE TABLE repositories (
 
 CREATE INDEX idx_repositories_user_id
     ON repositories(user_id);
+
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER set_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER set_github_connections_updated_at
+    BEFORE UPDATE ON github_connections
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER set_repositories_updated_at
+    BEFORE UPDATE ON repositories
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE INDEX idx_users_github_login ON users(github_login);

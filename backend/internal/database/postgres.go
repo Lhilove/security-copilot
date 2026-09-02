@@ -2,9 +2,16 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -33,4 +40,32 @@ func Connect(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	}
 
 	return pool, nil // Return the connection pool to the caller
+}
+
+// Migrate runs all pending database migrations from the provided migrations directory.
+func Migrate(databaseURL string, migrationsPath string) error {
+	// Open the migrations directory as an fs.FS
+	dir := os.DirFS(migrationsPath)
+
+	driver, err := iofs.New(dir, ".")
+	if err != nil {
+		return fmt.Errorf("create migrations source: %w", err)
+	}
+
+	migrateURL := "pgx5://" + strings.TrimPrefix(
+		strings.TrimPrefix(databaseURL, "postgres://"),
+		"postgresql://",
+	)
+
+	m, err := migrate.NewWithSourceInstance("iofs", driver, migrateURL)
+	if err != nil {
+		return fmt.Errorf("create migrator: %w", err)
+	}
+	defer m.Close()
+
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("run migrations: %w", err)
+	}
+
+	return nil
 }
