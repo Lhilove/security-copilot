@@ -65,10 +65,10 @@ Active development. Phase 1 complete.
 
 ### Phase 2 — GitHub integration
 
-- [ ] Repository discovery
-- [ ] Repository persistence
-- [ ] Repository selection
-- [ ] GitHub API service abstraction
+- [x] Repository discovery
+- [x] Repository persistence
+- [x] Repository selection
+- [x] GitHub API service abstraction
 - [ ] Webhook verification
 - [ ] Repository event ingestion
 
