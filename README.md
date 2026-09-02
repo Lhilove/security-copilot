@@ -74,9 +74,10 @@ Active development. Phase 1 complete.
 
 ### Phase 3 — Security intelligence
 
-- [ ] Security finding model
-- [ ] Finding normalization and aggregation
-- [ ] Risk scoring
+- [x] Security finding model
+- [x] Finding normalization and aggregation
+- [x] Severity normalization
+- [x] Risk scoring
 - [ ] Business impact analysis
 
 ### Phase 4 — AI remediation

@@ -31,6 +31,7 @@ func NewGitHubAuth(cfg *config.Config) *GitHubAuth {
 				"read:user",
 				"user:email",
 				"repo",
+				"security_events",
 			},
 		},
 	}

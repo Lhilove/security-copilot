@@ -132,3 +132,28 @@ func (r *RepositoryRepository) DeselectRepository(ctx context.Context, userID st
 
 	return nil
 }
+
+func (r *RepositoryRepository) GetRepositoryByID(ctx context.Context, userID string, repoID string) (*Repository, error) {
+	query := `
+        SELECT id, user_id, github_repo_id, owner, name, full_name, private, monitored
+        FROM repositories
+        WHERE id = $1 AND user_id = $2
+    `
+
+	repo := &Repository{}
+	err := r.pool.QueryRow(ctx, query, repoID, userID).Scan(
+		&repo.ID,
+		&repo.UserID,
+		&repo.GitHubRepoID,
+		&repo.Owner,
+		&repo.Name,
+		&repo.FullName,
+		&repo.Private,
+		&repo.Monitored,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get repository: %w", err)
+	}
+
+	return repo, nil
+}
