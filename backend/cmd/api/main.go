@@ -12,6 +12,7 @@ import (
 	"github.com/lhilove/security-copilot/internal/config"
 	"github.com/lhilove/security-copilot/internal/crypto"
 	"github.com/lhilove/security-copilot/internal/database"
+	github "github.com/lhilove/security-copilot/internal/github"
 )
 
 func main() {
@@ -20,11 +21,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Run migrations before opening the connection pool
 	if err := database.Migrate(cfg.DatabaseURL, cfg.MigrationsPath); err != nil {
 		log.Fatalf("run migrations: %v", err)
 	}
-
 	log.Println("Database migrations applied")
 
 	db, err := database.Connect(context.Background(), cfg.DatabaseURL)
@@ -32,16 +31,19 @@ func main() {
 		log.Fatal(err)
 	}
 	defer db.Close()
+
 	userRepo := database.NewUserRepository(db)
 	connRepo := database.NewGitHubConnectionRepository(db)
+	repoRepo := database.NewRepositoryRepository(db)
 
 	log.Println("Database connection established")
 
 	githubAuth := auth.NewGitHubAuth(cfg)
 
 	router := gin.Default()
-	router.SetTrustedProxies(nil) // no proxies trusted in development
+	router.SetTrustedProxies(nil)
 
+	// Public routes
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
 			"status":  "ok",
@@ -90,7 +92,6 @@ func main() {
 			return
 		}
 
-		// Delete the oauth_state cookie after validation
 		http.SetCookie(c.Writer, &http.Cookie{
 			Name:     "oauth_state",
 			Value:    "",
@@ -112,7 +113,6 @@ func main() {
 			return
 		}
 
-		// Upsert the user
 		dbUser, err := userRepo.UpsertUser(
 			c.Request.Context(),
 			githubUser.ID,
@@ -125,27 +125,14 @@ func main() {
 			return
 		}
 
-		// Encrypt the token
 		encryptedToken, err := crypto.Encrypt(cfg.EncryptionKey, []byte(token.AccessToken))
 		if err != nil {
 			c.JSON(500, gin.H{"error": "failed to encrypt token"})
 			return
 		}
 
-		// Base64-encode for safe storage in TEXT column
 		encodedToken := base64.StdEncoding.EncodeToString(encryptedToken)
 
-		// Store the connection
-		if err := connRepo.UpsertConnection(
-			c.Request.Context(),
-			dbUser.ID,
-			encodedToken,
-		); err != nil {
-			c.JSON(500, gin.H{"error": "failed to save github connection"})
-			return
-		}
-
-		// Store the connection
 		if err := connRepo.UpsertConnection(
 			c.Request.Context(),
 			dbUser.ID,
@@ -156,9 +143,83 @@ func main() {
 			return
 		}
 
+		tokenString, err := auth.IssueToken(dbUser.ID, cfg.JWTSecret)
+		if err != nil {
+			log.Printf("failed to issue token: %v", err)
+			c.JSON(500, gin.H{"error": "failed to issue token"})
+			return
+		}
+
 		c.JSON(200, gin.H{
 			"message": "GitHub connected successfully",
+			"token":   tokenString,
 			"user":    dbUser,
+		})
+	})
+
+	// Authenticated routes
+	authorized := router.Group("/api/v1")
+	authorized.Use(auth.RequireAuth(cfg.JWTSecret))
+
+	authorized.GET("/repositories", func(c *gin.Context) {
+		userID := c.GetString("user_id")
+
+		conn, err := connRepo.GetConnection(c.Request.Context(), userID)
+		if err != nil {
+			log.Printf("get connection: %v", err)
+			c.JSON(500, gin.H{"error": "failed to retrieve github connection"})
+			return
+		}
+
+		encryptedBytes, err := base64.StdEncoding.DecodeString(conn.AccessTokenEncrypted)
+		if err != nil {
+			log.Printf("decode token: %v", err)
+			c.JSON(500, gin.H{"error": "failed to decode token"})
+			return
+		}
+
+		tokenBytes, err := crypto.Decrypt(cfg.EncryptionKey, encryptedBytes)
+		if err != nil {
+			log.Printf("decrypt token: %v", err)
+			c.JSON(500, gin.H{"error": "failed to decrypt token"})
+			return
+		}
+
+		ghClient := github.NewClient(string(tokenBytes))
+		ghRepos, err := ghClient.ListRepositories(c.Request.Context())
+		if err != nil {
+			log.Printf("list repositories: %v", err)
+			c.JSON(500, gin.H{"error": "failed to fetch repositories"})
+			return
+		}
+
+		var repos []database.Repository
+		for _, r := range ghRepos {
+			repos = append(repos, database.Repository{
+				GitHubRepoID: r.ID,
+				Owner:        r.Owner.Login,
+				Name:         r.Name,
+				FullName:     r.FullName,
+				Private:      r.Private,
+			})
+		}
+
+		if err := repoRepo.UpsertRepositories(c.Request.Context(), userID, repos); err != nil {
+			log.Printf("upsert repositories: %v", err)
+			c.JSON(500, gin.H{"error": "failed to save repositories"})
+			return
+		}
+
+		stored, err := repoRepo.GetRepositoriesByUserID(c.Request.Context(), userID)
+		if err != nil {
+			log.Printf("get repositories: %v", err)
+			c.JSON(500, gin.H{"error": "failed to retrieve repositories"})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"repositories": stored,
+			"count":        len(stored),
 		})
 	})
 

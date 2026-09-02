@@ -55,3 +55,4 @@ CREATE TRIGGER set_repositories_updated_at
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE INDEX idx_users_github_login ON users(github_login);
+ALTER TABLE users ADD COLUMN tier TEXT NOT NULL DEFAULT 'free';

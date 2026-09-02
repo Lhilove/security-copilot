@@ -15,6 +15,7 @@ type Config struct {
 	DatabaseURL        string
 	MigrationsPath     string
 	EncryptionKey      []byte // decoded bytes, not string
+	JWTSecret          []byte // decoded bytes, not string
 }
 
 func Load() (*Config, error) {
@@ -35,6 +36,16 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("ENCRYPTION_KEY must be 32 bytes, got %d", len(keyBytes))
 	}
 
+	rawJWT := os.Getenv("JWT_SECRET")
+	if rawJWT == "" {
+		return nil, fmt.Errorf("JWT_SECRET is not configured")
+	}
+
+	jwtBytes, err := base64.StdEncoding.DecodeString(rawJWT)
+	if err != nil {
+		return nil, fmt.Errorf("decode JWT_SECRET: %w", err)
+	}
+
 	cfg := &Config{
 		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
 		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
@@ -42,6 +53,7 @@ func Load() (*Config, error) {
 		DatabaseURL:        os.Getenv("DATABASE_URL"),
 		MigrationsPath:     os.Getenv("MIGRATIONS_PATH"),
 		EncryptionKey:      keyBytes,
+		JWTSecret:          jwtBytes,
 	}
 
 	if cfg.GitHubClientID == "" {
