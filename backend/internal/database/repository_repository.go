@@ -23,6 +23,7 @@ type Repository struct {
 	Name         string
 	FullName     string
 	Private      bool
+	Monitored    bool
 }
 
 // UpsertRepositories inserts or updates a batch of repositories for a user.
@@ -59,7 +60,7 @@ func (r *RepositoryRepository) UpsertRepositories(ctx context.Context, userID st
 // GetRepositoriesByUserID returns all stored repositories for a user.
 func (r *RepositoryRepository) GetRepositoriesByUserID(ctx context.Context, userID string) ([]Repository, error) {
 	query := `
-		SELECT id, user_id, github_repo_id, owner, name, full_name, private
+		SELECT id, user_id, github_repo_id, owner, name, full_name, private, monitored
 		FROM repositories
 		WHERE user_id = $1
 		ORDER BY full_name ASC
@@ -82,6 +83,7 @@ func (r *RepositoryRepository) GetRepositoriesByUserID(ctx context.Context, user
 			&repo.Name,
 			&repo.FullName,
 			&repo.Private,
+			&repo.Monitored,
 		); err != nil {
 			return nil, fmt.Errorf("scan repository: %w", err)
 		}
@@ -89,4 +91,44 @@ func (r *RepositoryRepository) GetRepositoriesByUserID(ctx context.Context, user
 	}
 
 	return repos, nil
+}
+
+// SelectRepository marks a repository as monitored for a user.
+func (r *RepositoryRepository) SelectRepository(ctx context.Context, userID string, repoID string) error {
+	query := `
+		UPDATE repositories
+		SET monitored = TRUE, updated_at = NOW()
+		WHERE id = $1 AND user_id = $2
+	`
+
+	result, err := r.pool.Exec(ctx, query, repoID, userID)
+	if err != nil {
+		return fmt.Errorf("select repository: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("repository not found or does not belong to user")
+	}
+
+	return nil
+}
+
+// DeselectRepository unmarks a repository as monitored.
+func (r *RepositoryRepository) DeselectRepository(ctx context.Context, userID string, repoID string) error {
+	query := `
+		UPDATE repositories
+		SET monitored = FALSE, updated_at = NOW()
+		WHERE id = $1 AND user_id = $2
+	`
+
+	result, err := r.pool.Exec(ctx, query, repoID, userID)
+	if err != nil {
+		return fmt.Errorf("deselect repository: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("repository not found or does not belong to user")
+	}
+
+	return nil
 }

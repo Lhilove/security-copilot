@@ -223,6 +223,31 @@ func main() {
 		})
 	})
 
+	authorized.POST("/repositories/:id/select", func(c *gin.Context) {
+		userID := c.GetString("user_id")
+		repoID := c.Param("id")
+
+		if err := repoRepo.SelectRepository(c.Request.Context(), userID, repoID); err != nil {
+			log.Printf("select repository: %v", err)
+			c.JSON(404, gin.H{"error": "repository not found"})
+			return
+		}
+
+		c.JSON(200, gin.H{"message": "repository selected for monitoring"})
+	})
+
+	authorized.DELETE("/repositories/:id/select", func(c *gin.Context) {
+		userID := c.GetString("user_id")
+		repoID := c.Param("id")
+
+		if err := repoRepo.DeselectRepository(c.Request.Context(), userID, repoID); err != nil {
+			log.Printf("deselect repository: %v", err)
+			c.JSON(404, gin.H{"error": "repository not found"})
+			return
+		}
+
+		c.JSON(200, gin.H{"message": "repository deselected"})
+	})
 	log.Println("Security Copilot API running on :8080")
 
 	if err := router.Run(":8080"); err != nil {
