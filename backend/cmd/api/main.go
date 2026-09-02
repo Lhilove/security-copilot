@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -158,6 +159,144 @@ func main() {
 			"token":   tokenString,
 			"user":    dbUser,
 		})
+	})
+	router.POST("/api/v1/webhooks/github", func(c *gin.Context) {
+		// Read body before anything else
+		body, err := github.ReadWebhookBody(c.Request)
+		if err != nil {
+			log.Printf("webhook: read body: %v", err)
+			c.JSON(400, gin.H{"error": "failed to read request body"})
+			return
+		}
+
+		// Verify signature immediately — reject before processing any content
+		signature := c.GetHeader("X-Hub-Signature-256")
+		if err := github.VerifyWebhookSignature(body, signature, cfg.GitHubWebhookSecret); err != nil {
+			log.Printf("webhook: signature verification failed: %v", err)
+			c.JSON(401, gin.H{"error": "invalid webhook signature"})
+			return
+		}
+
+		eventType := c.GetHeader("X-GitHub-Event")
+		if eventType == "" {
+			c.JSON(400, gin.H{"error": "missing event type header"})
+			return
+		}
+
+		switch eventType {
+		case "code_scanning_alert":
+			var event github.CodeScanningAlertEvent
+			if err := json.Unmarshal(body, &event); err != nil {
+				log.Printf("webhook: decode code_scanning_alert: %v", err)
+				c.JSON(400, gin.H{"error": "invalid payload"})
+				return
+			}
+
+			// Look up the repository in our database by GitHub repo ID
+			// We use our own database, never URLs from the payload
+			repo, err := repoRepo.GetRepositoryByGitHubID(c.Request.Context(), event.Repository.ID)
+			if err != nil {
+				// Repo not monitored — ignore silently
+				c.JSON(200, gin.H{"status": "ignored"})
+				return
+			}
+
+			lineNum := event.Alert.MostRecentInstance.Location.StartLine
+			finding := database.Finding{
+				RepositoryID:  repo.ID,
+				Source:        "code_scanning",
+				SourceAlertID: fmt.Sprintf("%d", event.Alert.Number),
+				Severity:      normalizeSeverity(event.Alert.Rule.Severity),
+				Title:         event.Alert.Rule.ID,
+				Description:   event.Alert.Rule.Description,
+				State:         event.Alert.State,
+				FilePath:      event.Alert.MostRecentInstance.Location.Path,
+				LineNumber:    &lineNum,
+			}
+
+			raw := map[string]any{"action": event.Action, "alert_number": event.Alert.Number}
+			if err := findingRepo.UpsertFindings(c.Request.Context(), []database.Finding{finding}, []map[string]any{raw}); err != nil {
+				log.Printf("webhook: upsert code scanning finding: %v", err)
+				c.JSON(500, gin.H{"error": "failed to process event"})
+				return
+			}
+
+		case "dependabot_alert":
+			var event github.DependabotAlertEvent
+			if err := json.Unmarshal(body, &event); err != nil {
+				log.Printf("webhook: decode dependabot_alert: %v", err)
+				c.JSON(400, gin.H{"error": "invalid payload"})
+				return
+			}
+
+			repo, err := repoRepo.GetRepositoryByGitHubID(c.Request.Context(), event.Repository.ID)
+			if err != nil {
+				c.JSON(200, gin.H{"status": "ignored"})
+				return
+			}
+
+			finding := database.Finding{
+				RepositoryID:  repo.ID,
+				Source:        "dependabot",
+				SourceAlertID: fmt.Sprintf("%d", event.Alert.Number),
+				Severity:      normalizeSeverity(event.Alert.SecurityVulnerability.Severity),
+				Title:         event.Alert.SecurityAdvisory.Summary,
+				Description:   event.Alert.SecurityAdvisory.Description,
+				State:         event.Alert.State,
+				PackageName:   event.Alert.SecurityVulnerability.Package.Name,
+				CVEID:         event.Alert.SecurityAdvisory.CVEId,
+			}
+
+			raw := map[string]any{"action": event.Action, "alert_number": event.Alert.Number}
+			if err := findingRepo.UpsertFindings(c.Request.Context(), []database.Finding{finding}, []map[string]any{raw}); err != nil {
+				log.Printf("webhook: upsert dependabot finding: %v", err)
+				c.JSON(500, gin.H{"error": "failed to process event"})
+				return
+			}
+
+		case "secret_scanning_alert":
+			var event github.SecretScanningAlertEvent
+			if err := json.Unmarshal(body, &event); err != nil {
+				log.Printf("webhook: decode secret_scanning_alert: %v", err)
+				c.JSON(400, gin.H{"error": "invalid payload"})
+				return
+			}
+
+			repo, err := repoRepo.GetRepositoryByGitHubID(c.Request.Context(), event.Repository.ID)
+			if err != nil {
+				c.JSON(200, gin.H{"status": "ignored"})
+				return
+			}
+
+			finding := database.Finding{
+				RepositoryID:  repo.ID,
+				Source:        "secret_scanning",
+				SourceAlertID: fmt.Sprintf("%d", event.Alert.Number),
+				Severity:      "critical",
+				Title:         fmt.Sprintf("Secret detected: %s", event.Alert.SecretType),
+				State:         event.Alert.State,
+				SecretType:    event.Alert.SecretType,
+			}
+
+			raw := map[string]any{"action": event.Action, "alert_number": event.Alert.Number}
+			if err := findingRepo.UpsertFindings(c.Request.Context(), []database.Finding{finding}, []map[string]any{raw}); err != nil {
+				log.Printf("webhook: upsert secret scanning finding: %v", err)
+				c.JSON(500, gin.H{"error": "failed to process event"})
+				return
+			}
+
+		case "ping":
+			// GitHub sends a ping when a webhook is first configured
+			c.JSON(200, gin.H{"status": "ok"})
+			return
+
+		default:
+			// Unknown event type — acknowledge but ignore
+			c.JSON(200, gin.H{"status": "ignored"})
+			return
+		}
+
+		c.JSON(200, gin.H{"status": "processed"})
 	})
 
 	// Authenticated routes

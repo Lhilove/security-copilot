@@ -69,8 +69,8 @@ Active development. Phase 1 complete.
 - [x] Repository persistence
 - [x] Repository selection
 - [x] GitHub API service abstraction
-- [ ] Webhook verification
-- [ ] Repository event ingestion
+- [x] Webhook verification
+- [x] Repository event ingestion
 
 ### Phase 3 — Security intelligence
 

@@ -9,13 +9,14 @@ import (
 )
 
 type Config struct {
-	GitHubClientID     string
-	GitHubClientSecret string
-	GitHubRedirectURL  string
-	DatabaseURL        string
-	MigrationsPath     string
-	EncryptionKey      []byte // decoded bytes, not string
-	JWTSecret          []byte // decoded bytes, not string
+	GitHubClientID      string
+	GitHubClientSecret  string
+	GitHubRedirectURL   string
+	DatabaseURL         string
+	MigrationsPath      string
+	EncryptionKey       []byte // decoded bytes, not string
+	JWTSecret           []byte // decoded bytes, not string
+	GitHubWebhookSecret string
 }
 
 func Load() (*Config, error) {
@@ -76,5 +77,9 @@ func Load() (*Config, error) {
 		cfg.MigrationsPath = "migrations" // default path
 	}
 
+	cfg.GitHubWebhookSecret = os.Getenv("GITHUB_WEBHOOK_SECRET")
+	if cfg.GitHubWebhookSecret == "" {
+		return nil, fmt.Errorf("GITHUB_WEBHOOK_SECRET is not configured")
+	}
 	return cfg, nil
 }

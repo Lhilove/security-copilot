@@ -157,3 +157,32 @@ func (r *RepositoryRepository) GetRepositoryByID(ctx context.Context, userID str
 
 	return repo, nil
 }
+
+// GetRepositoryByGitHubID looks up a repository by its GitHub repo ID.
+// Used by webhook handlers to resolve payload data to our own records
+// without trusting URLs or names from the payload.
+func (r *RepositoryRepository) GetRepositoryByGitHubID(ctx context.Context, githubRepoID int64) (*Repository, error) {
+	query := `
+		SELECT id, user_id, github_repo_id, owner, name, full_name, private, monitored
+		FROM repositories
+		WHERE github_repo_id = $1
+		AND monitored = TRUE
+	`
+
+	repo := &Repository{}
+	err := r.pool.QueryRow(ctx, query, githubRepoID).Scan(
+		&repo.ID,
+		&repo.UserID,
+		&repo.GitHubRepoID,
+		&repo.Owner,
+		&repo.Name,
+		&repo.FullName,
+		&repo.Private,
+		&repo.Monitored,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get repository by github id: %w", err)
+	}
+
+	return repo, nil
+}
