@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 
@@ -12,9 +10,10 @@ import (
 
 	"github.com/lhilove/security-copilot/internal/auth"
 	"github.com/lhilove/security-copilot/internal/config"
-	"github.com/lhilove/security-copilot/internal/crypto"
 	"github.com/lhilove/security-copilot/internal/database"
-	github "github.com/lhilove/security-copilot/internal/github"
+	"github.com/lhilove/security-copilot/internal/findings"
+	gh "github.com/lhilove/security-copilot/internal/github"
+	"github.com/lhilove/security-copilot/internal/repositories"
 	"github.com/lhilove/security-copilot/internal/risk"
 )
 
@@ -34,29 +33,30 @@ func main() {
 		log.Fatal(err)
 	}
 	defer db.Close()
+	log.Println("Database connection established")
 
+	// Repositories (data access)
 	userRepo := database.NewUserRepository(db)
 	connRepo := database.NewGitHubConnectionRepository(db)
 	repoRepo := database.NewRepositoryRepository(db)
 	findingRepo := database.NewFindingRepository(db)
 
-	log.Println("Database connection established")
-
-	githubAuth := auth.NewGitHubAuth(cfg)
+	// Services (business logic)
+	authService := auth.NewService(cfg, userRepo, connRepo)
+	repoService := repositories.NewService(repoRepo, connRepo, cfg.EncryptionKey)
+	findingService := findings.NewService(findingRepo, repoRepo, connRepo, cfg.EncryptionKey)
+	webhookHandler := gh.NewWebhookHandler(repoRepo, findingRepo, findings.NormalizeSeverity)
 
 	router := gin.Default()
 	router.SetTrustedProxies(nil)
 
 	// Public routes
 	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"status":  "ok",
-			"service": "security-copilot-api",
-		})
+		c.JSON(200, gin.H{"status": "ok", "service": "security-copilot-api"})
 	})
 
 	router.GET("/api/v1/auth/github", func(c *gin.Context) {
-		state, err := githubAuth.GenerateState()
+		state, err := authService.GitHubAuth().GenerateState()
 		if err != nil {
 			c.JSON(500, gin.H{"error": "failed to generate OAuth state"})
 			return
@@ -70,7 +70,7 @@ func main() {
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
 		})
-		c.Redirect(302, githubAuth.LoginURL(state))
+		c.Redirect(302, authService.GitHubAuth().LoginURL(state))
 	})
 
 	router.GET("/api/v1/auth/github/callback", func(c *gin.Context) {
@@ -89,9 +89,7 @@ func main() {
 			return
 		}
 
-		expectedState := cookie.Value
-
-		if !auth.ValidateState(expectedState, receivedState) {
+		if !auth.ValidateState(cookie.Value, receivedState) {
 			c.JSON(400, gin.H{"error": "invalid OAuth state"})
 			return
 		}
@@ -105,193 +103,77 @@ func main() {
 			SameSite: http.SameSiteLaxMode,
 		})
 
-		token, err := githubAuth.ExchangeCode(c.Request.Context(), code)
+		result, err := authService.ConnectGitHub(c.Request.Context(), code)
 		if err != nil {
-			c.JSON(500, gin.H{"error": "failed to exchange authorization code"})
-			return
-		}
-
-		githubUser, err := githubAuth.GetUser(c.Request.Context(), token)
-		if err != nil {
-			c.JSON(500, gin.H{"error": "failed to retrieve GitHub user"})
-			return
-		}
-
-		dbUser, err := userRepo.UpsertUser(
-			c.Request.Context(),
-			githubUser.ID,
-			githubUser.Login,
-			githubUser.Email,
-		)
-		if err != nil {
-			log.Printf("failed to save user: %v", err)
-			c.JSON(500, gin.H{"error": "failed to save user"})
-			return
-		}
-
-		encryptedToken, err := crypto.Encrypt(cfg.EncryptionKey, []byte(token.AccessToken))
-		if err != nil {
-			c.JSON(500, gin.H{"error": "failed to encrypt token"})
-			return
-		}
-
-		encodedToken := base64.StdEncoding.EncodeToString(encryptedToken)
-
-		if err := connRepo.UpsertConnection(
-			c.Request.Context(),
-			dbUser.ID,
-			encodedToken,
-		); err != nil {
-			log.Printf("failed to save github connection: %v", err)
-			c.JSON(500, gin.H{"error": "failed to save github connection"})
-			return
-		}
-
-		tokenString, err := auth.IssueToken(dbUser.ID, cfg.JWTSecret)
-		if err != nil {
-			log.Printf("failed to issue token: %v", err)
-			c.JSON(500, gin.H{"error": "failed to issue token"})
+			log.Printf("connect github: %v", err)
+			c.JSON(500, gin.H{"error": "authentication failed"})
 			return
 		}
 
 		c.JSON(200, gin.H{
 			"message": "GitHub connected successfully",
-			"token":   tokenString,
-			"user":    dbUser,
+			"token":   result.Token,
+			"user":    result.User,
 		})
 	})
+
 	router.POST("/api/v1/webhooks/github", func(c *gin.Context) {
-		// Read body before anything else
-		body, err := github.ReadWebhookBody(c.Request)
+		body, err := gh.ReadWebhookBody(c.Request)
 		if err != nil {
-			log.Printf("webhook: read body: %v", err)
 			c.JSON(400, gin.H{"error": "failed to read request body"})
 			return
 		}
 
-		// Verify signature immediately — reject before processing any content
-		signature := c.GetHeader("X-Hub-Signature-256")
-		if err := github.VerifyWebhookSignature(body, signature, cfg.GitHubWebhookSecret); err != nil {
-			log.Printf("webhook: signature verification failed: %v", err)
+		if err := gh.VerifyWebhookSignature(body, c.GetHeader("X-Hub-Signature-256"), cfg.GitHubWebhookSecret); err != nil {
+			log.Printf("webhook signature failed: %v", err)
 			c.JSON(401, gin.H{"error": "invalid webhook signature"})
 			return
 		}
 
 		eventType := c.GetHeader("X-GitHub-Event")
-		if eventType == "" {
-			c.JSON(400, gin.H{"error": "missing event type header"})
-			return
-		}
 
 		switch eventType {
 		case "code_scanning_alert":
-			var event github.CodeScanningAlertEvent
+			var event gh.CodeScanningAlertEvent
 			if err := json.Unmarshal(body, &event); err != nil {
-				log.Printf("webhook: decode code_scanning_alert: %v", err)
 				c.JSON(400, gin.H{"error": "invalid payload"})
 				return
 			}
-
-			// Look up the repository in our database by GitHub repo ID
-			// We use our own database, never URLs from the payload
-			repo, err := repoRepo.GetRepositoryByGitHubID(c.Request.Context(), event.Repository.ID)
-			if err != nil {
-				// Repo not monitored — ignore silently
-				c.JSON(200, gin.H{"status": "ignored"})
-				return
-			}
-
-			lineNum := event.Alert.MostRecentInstance.Location.StartLine
-			finding := database.Finding{
-				RepositoryID:  repo.ID,
-				Source:        "code_scanning",
-				SourceAlertID: fmt.Sprintf("%d", event.Alert.Number),
-				Severity:      normalizeSeverity(event.Alert.Rule.Severity),
-				Title:         event.Alert.Rule.ID,
-				Description:   event.Alert.Rule.Description,
-				State:         event.Alert.State,
-				FilePath:      event.Alert.MostRecentInstance.Location.Path,
-				LineNumber:    &lineNum,
-			}
-
-			raw := map[string]any{"action": event.Action, "alert_number": event.Alert.Number}
-			if err := findingRepo.UpsertFindings(c.Request.Context(), []database.Finding{finding}, []map[string]any{raw}); err != nil {
-				log.Printf("webhook: upsert code scanning finding: %v", err)
+			if err := webhookHandler.HandleCodeScanning(c.Request.Context(), event); err != nil {
+				log.Printf("webhook code scanning: %v", err)
 				c.JSON(500, gin.H{"error": "failed to process event"})
 				return
 			}
 
 		case "dependabot_alert":
-			var event github.DependabotAlertEvent
+			var event gh.DependabotAlertEvent
 			if err := json.Unmarshal(body, &event); err != nil {
-				log.Printf("webhook: decode dependabot_alert: %v", err)
 				c.JSON(400, gin.H{"error": "invalid payload"})
 				return
 			}
-
-			repo, err := repoRepo.GetRepositoryByGitHubID(c.Request.Context(), event.Repository.ID)
-			if err != nil {
-				c.JSON(200, gin.H{"status": "ignored"})
-				return
-			}
-
-			finding := database.Finding{
-				RepositoryID:  repo.ID,
-				Source:        "dependabot",
-				SourceAlertID: fmt.Sprintf("%d", event.Alert.Number),
-				Severity:      normalizeSeverity(event.Alert.SecurityVulnerability.Severity),
-				Title:         event.Alert.SecurityAdvisory.Summary,
-				Description:   event.Alert.SecurityAdvisory.Description,
-				State:         event.Alert.State,
-				PackageName:   event.Alert.SecurityVulnerability.Package.Name,
-				CVEID:         event.Alert.SecurityAdvisory.CVEId,
-			}
-
-			raw := map[string]any{"action": event.Action, "alert_number": event.Alert.Number}
-			if err := findingRepo.UpsertFindings(c.Request.Context(), []database.Finding{finding}, []map[string]any{raw}); err != nil {
-				log.Printf("webhook: upsert dependabot finding: %v", err)
+			if err := webhookHandler.HandleDependabot(c.Request.Context(), event); err != nil {
+				log.Printf("webhook dependabot: %v", err)
 				c.JSON(500, gin.H{"error": "failed to process event"})
 				return
 			}
 
 		case "secret_scanning_alert":
-			var event github.SecretScanningAlertEvent
+			var event gh.SecretScanningAlertEvent
 			if err := json.Unmarshal(body, &event); err != nil {
-				log.Printf("webhook: decode secret_scanning_alert: %v", err)
 				c.JSON(400, gin.H{"error": "invalid payload"})
 				return
 			}
-
-			repo, err := repoRepo.GetRepositoryByGitHubID(c.Request.Context(), event.Repository.ID)
-			if err != nil {
-				c.JSON(200, gin.H{"status": "ignored"})
-				return
-			}
-
-			finding := database.Finding{
-				RepositoryID:  repo.ID,
-				Source:        "secret_scanning",
-				SourceAlertID: fmt.Sprintf("%d", event.Alert.Number),
-				Severity:      "critical",
-				Title:         fmt.Sprintf("Secret detected: %s", event.Alert.SecretType),
-				State:         event.Alert.State,
-				SecretType:    event.Alert.SecretType,
-			}
-
-			raw := map[string]any{"action": event.Action, "alert_number": event.Alert.Number}
-			if err := findingRepo.UpsertFindings(c.Request.Context(), []database.Finding{finding}, []map[string]any{raw}); err != nil {
-				log.Printf("webhook: upsert secret scanning finding: %v", err)
+			if err := webhookHandler.HandleSecretScanning(c.Request.Context(), event); err != nil {
+				log.Printf("webhook secret scanning: %v", err)
 				c.JSON(500, gin.H{"error": "failed to process event"})
 				return
 			}
 
 		case "ping":
-			// GitHub sends a ping when a webhook is first configured
 			c.JSON(200, gin.H{"status": "ok"})
 			return
 
 		default:
-			// Unknown event type — acknowledge but ignore
 			c.JSON(200, gin.H{"status": "ignored"})
 			return
 		}
@@ -305,232 +187,56 @@ func main() {
 
 	authorized.GET("/repositories", func(c *gin.Context) {
 		userID := c.GetString("user_id")
-
-		conn, err := connRepo.GetConnection(c.Request.Context(), userID)
+		repos, err := repoService.SyncRepositories(c.Request.Context(), userID)
 		if err != nil {
-			log.Printf("get connection: %v", err)
-			c.JSON(500, gin.H{"error": "failed to retrieve github connection"})
-			return
-		}
-
-		encryptedBytes, err := base64.StdEncoding.DecodeString(conn.AccessTokenEncrypted)
-		if err != nil {
-			log.Printf("decode token: %v", err)
-			c.JSON(500, gin.H{"error": "failed to decode token"})
-			return
-		}
-
-		tokenBytes, err := crypto.Decrypt(cfg.EncryptionKey, encryptedBytes)
-		if err != nil {
-			log.Printf("decrypt token: %v", err)
-			c.JSON(500, gin.H{"error": "failed to decrypt token"})
-			return
-		}
-
-		ghClient := github.NewClient(string(tokenBytes))
-		ghRepos, err := ghClient.ListRepositories(c.Request.Context())
-		if err != nil {
-			log.Printf("list repositories: %v", err)
+			log.Printf("sync repositories: %v", err)
 			c.JSON(500, gin.H{"error": "failed to fetch repositories"})
 			return
 		}
-
-		var repos []database.Repository
-		for _, r := range ghRepos {
-			repos = append(repos, database.Repository{
-				GitHubRepoID: r.ID,
-				Owner:        r.Owner.Login,
-				Name:         r.Name,
-				FullName:     r.FullName,
-				Private:      r.Private,
-			})
-		}
-
-		if err := repoRepo.UpsertRepositories(c.Request.Context(), userID, repos); err != nil {
-			log.Printf("upsert repositories: %v", err)
-			c.JSON(500, gin.H{"error": "failed to save repositories"})
-			return
-		}
-
-		stored, err := repoRepo.GetRepositoriesByUserID(c.Request.Context(), userID)
-		if err != nil {
-			log.Printf("get repositories: %v", err)
-			c.JSON(500, gin.H{"error": "failed to retrieve repositories"})
-			return
-		}
-
-		c.JSON(200, gin.H{
-			"repositories": stored,
-			"count":        len(stored),
-		})
+		c.JSON(200, gin.H{"repositories": repos, "count": len(repos)})
 	})
 
 	authorized.POST("/repositories/:id/select", func(c *gin.Context) {
 		userID := c.GetString("user_id")
-		repoID := c.Param("id")
-
-		if err := repoRepo.SelectRepository(c.Request.Context(), userID, repoID); err != nil {
+		if err := repoService.SelectRepository(c.Request.Context(), userID, c.Param("id")); err != nil {
 			log.Printf("select repository: %v", err)
 			c.JSON(404, gin.H{"error": "repository not found"})
 			return
 		}
-
 		c.JSON(200, gin.H{"message": "repository selected for monitoring"})
 	})
 
 	authorized.DELETE("/repositories/:id/select", func(c *gin.Context) {
 		userID := c.GetString("user_id")
-		repoID := c.Param("id")
-
-		if err := repoRepo.DeselectRepository(c.Request.Context(), userID, repoID); err != nil {
+		if err := repoService.DeselectRepository(c.Request.Context(), userID, c.Param("id")); err != nil {
 			log.Printf("deselect repository: %v", err)
 			c.JSON(404, gin.H{"error": "repository not found"})
 			return
 		}
-
 		c.JSON(200, gin.H{"message": "repository deselected"})
 	})
 
 	authorized.POST("/repositories/:id/sync", func(c *gin.Context) {
 		userID := c.GetString("user_id")
 		repoID := c.Param("id")
-
-		// Verify the repo belongs to this user and is monitored
-		repo, err := repoRepo.GetRepositoryByID(c.Request.Context(), userID, repoID)
+		count, err := findingService.SyncRepository(c.Request.Context(), userID, repoID)
 		if err != nil {
-			log.Printf("get repository: %v", err)
-			c.JSON(404, gin.H{"error": "repository not found"})
+			log.Printf("sync findings: %v", err)
+			c.JSON(500, gin.H{"error": "failed to sync findings"})
 			return
 		}
-
-		// Get and decrypt the token
-		conn, err := connRepo.GetConnection(c.Request.Context(), userID)
-		if err != nil {
-			log.Printf("get connection: %v", err)
-			c.JSON(500, gin.H{"error": "failed to retrieve github connection"})
-			return
-		}
-
-		encryptedBytes, err := base64.StdEncoding.DecodeString(conn.AccessTokenEncrypted)
-		if err != nil {
-			log.Printf("decode token: %v", err)
-			c.JSON(500, gin.H{"error": "failed to decode token"})
-			return
-		}
-
-		tokenBytes, err := crypto.Decrypt(cfg.EncryptionKey, encryptedBytes)
-		if err != nil {
-			log.Printf("decrypt token: %v", err)
-			c.JSON(500, gin.H{"error": "failed to decrypt token"})
-			return
-		}
-
-		ghClient := github.NewClient(string(tokenBytes))
-
-		var findings []database.Finding
-		var rawData []map[string]any
-
-		// Code scanning
-		codeAlerts, err := ghClient.ListCodeScanningAlerts(c.Request.Context(), repo.Owner, repo.Name)
-		if err != nil {
-			log.Printf("code scanning: %v", err)
-		} else {
-			for _, a := range codeAlerts {
-				lineNum := a.MostRecentInstance.Location.StartLine
-				findings = append(findings, database.Finding{
-					RepositoryID:  repoID,
-					Source:        "code_scanning",
-					SourceAlertID: fmt.Sprintf("%d", a.Number),
-					Severity:      normalizeSeverity(a.Rule.Severity),
-					Title:         a.Rule.ID,
-					Description:   a.Rule.Description,
-					State:         a.State,
-					FilePath:      a.MostRecentInstance.Location.Path,
-					LineNumber:    &lineNum,
-				})
-				rawData = append(rawData, a.RawData)
-			}
-			log.Printf("code scanning: %d alerts, err: %v", len(codeAlerts), err)
-		}
-
-		// Dependabot
-		depAlerts, err := ghClient.ListDependabotAlerts(c.Request.Context(), repo.Owner, repo.Name)
-		if err != nil {
-			log.Printf("dependabot: %v", err)
-		} else {
-			for _, a := range depAlerts {
-				findings = append(findings, database.Finding{
-					RepositoryID:  repoID,
-					Source:        "dependabot",
-					SourceAlertID: fmt.Sprintf("%d", a.Number),
-					Severity:      normalizeSeverity(a.SecurityVulnerability.Severity),
-					Title:         a.SecurityAdvisory.Summary,
-					Description:   a.SecurityAdvisory.Description,
-					State:         a.State,
-					PackageName:   a.SecurityVulnerability.Package.Name,
-					CVEID:         a.SecurityAdvisory.CVEId,
-				})
-				rawData = append(rawData, a.RawData)
-			}
-			log.Printf("dependabot: %d alerts, err: %v", len(depAlerts), err)
-		}
-
-		// Secret scanning
-		secretAlerts, err := ghClient.ListSecretScanningAlerts(c.Request.Context(), repo.Owner, repo.Name)
-		if err != nil {
-			log.Printf("secret scanning: %v", err)
-		} else {
-			for _, a := range secretAlerts {
-				findings = append(findings, database.Finding{
-					RepositoryID:  repoID,
-					Source:        "secret_scanning",
-					SourceAlertID: fmt.Sprintf("%d", a.Number),
-					Severity:      "critical",
-					Title:         fmt.Sprintf("Secret detected: %s", a.SecretType),
-					State:         a.State,
-					SecretType:    a.SecretType,
-				})
-				rawData = append(rawData, a.RawData)
-			}
-			log.Printf("secret scanning: %d alerts, err: %v", len(secretAlerts), err)
-		}
-
-		if len(findings) > 0 {
-			if err := findingRepo.UpsertFindings(c.Request.Context(), findings, rawData); err != nil {
-				log.Printf("upsert findings: %v", err)
-				c.JSON(500, gin.H{"error": "failed to save findings"})
-				return
-			}
-		}
-
-		c.JSON(200, gin.H{
-			"synced": len(findings),
-			"repo":   repo.FullName,
-		})
+		c.JSON(200, gin.H{"synced": count})
 	})
 
 	authorized.GET("/repositories/:id/findings", func(c *gin.Context) {
 		userID := c.GetString("user_id")
-		repoID := c.Param("id")
-
-		// Verify ownership
-		_, err := repoRepo.GetRepositoryByID(c.Request.Context(), userID, repoID)
-		if err != nil {
-			c.JSON(404, gin.H{"error": "repository not found"})
-			return
-		}
-
-		findings, err := findingRepo.GetFindingsByRepositoryID(c.Request.Context(), repoID)
+		f, err := findingService.GetFindings(c.Request.Context(), userID, c.Param("id"))
 		if err != nil {
 			log.Printf("get findings: %v", err)
 			c.JSON(500, gin.H{"error": "failed to retrieve findings"})
 			return
 		}
-
-		c.JSON(200, gin.H{
-			"findings": findings,
-			"count":    len(findings),
-		})
+		c.JSON(200, gin.H{"findings": f, "count": len(f)})
 	})
 
 	authorized.GET("/repositories/:id/overview", func(c *gin.Context) {
@@ -543,14 +249,15 @@ func main() {
 			return
 		}
 
-		summary, err := findingRepo.GetFindingSummary(c.Request.Context(), repoID)
+		summary, err := findingService.GetSummary(c.Request.Context(), userID, repoID)
 		if err != nil {
-			log.Printf("get finding summary: %v", err)
-			c.JSON(500, gin.H{"error": "failed to get security overview"})
+			log.Printf("get summary: %v", err)
+			c.JSON(500, gin.H{"error": "failed to get overview"})
 			return
 		}
 
 		score := risk.Calculate(summary)
+
 		c.JSON(200, gin.H{
 			"repository": repo.FullName,
 			"monitored":  repo.Monitored,
@@ -568,23 +275,7 @@ func main() {
 	})
 
 	log.Println("Security Copilot API running on :8080")
-
 	if err := router.Run(":8080"); err != nil {
 		log.Fatal(err)
-	}
-}
-
-func normalizeSeverity(s string) string {
-	switch s {
-	case "critical":
-		return "critical"
-	case "high":
-		return "high"
-	case "medium", "moderate":
-		return "medium"
-	case "low":
-		return "low"
-	default:
-		return "medium"
 	}
 }
