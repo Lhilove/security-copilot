@@ -48,7 +48,7 @@ The AI proposes and executes controlled security work. The developer retains app
 
 ## Status
 
-Active development. Phase 1 complete.
+Active development. Phase 1, 2 complete.
 
 ### Phase 1 — Foundation
 
@@ -78,12 +78,12 @@ Active development. Phase 1 complete.
 - [x] Finding normalization and aggregation
 - [x] Severity normalization
 - [x] Risk scoring
-- [ ] Business impact analysis
+- [x] Business impact analysis
 
 ### Phase 4 — AI remediation
 
-- [ ] AI provider abstraction
-- [ ] Vulnerability explanation
+- [x] AI provider abstraction
+- [x] Vulnerability explanation
 - [ ] Remediation generation
 - [ ] Output validation
 - [ ] Prompt injection defenses

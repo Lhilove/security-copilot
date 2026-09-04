@@ -17,6 +17,9 @@ type Config struct {
 	EncryptionKey       []byte // decoded bytes, not string
 	JWTSecret           []byte // decoded bytes, not string
 	GitHubWebhookSecret string
+	NvidiaAPIKey        string
+	NvidiaBaseURL       string
+	AIModel             string
 }
 
 func Load() (*Config, error) {
@@ -53,6 +56,9 @@ func Load() (*Config, error) {
 		GitHubRedirectURL:  os.Getenv("GITHUB_REDIRECT_URL"),
 		DatabaseURL:        os.Getenv("DATABASE_URL"),
 		MigrationsPath:     os.Getenv("MIGRATIONS_PATH"),
+		NvidiaAPIKey:       os.Getenv("NVIDIA_API_KEY"),
+		NvidiaBaseURL:      os.Getenv("NVIDIA_BASE_URL"),
+		AIModel:            os.Getenv("AI_MODEL"),
 		EncryptionKey:      keyBytes,
 		JWTSecret:          jwtBytes,
 	}
@@ -80,6 +86,10 @@ func Load() (*Config, error) {
 	cfg.GitHubWebhookSecret = os.Getenv("GITHUB_WEBHOOK_SECRET")
 	if cfg.GitHubWebhookSecret == "" {
 		return nil, fmt.Errorf("GITHUB_WEBHOOK_SECRET is not configured")
+	}
+
+	if cfg.NvidiaAPIKey == "" {
+		return nil, fmt.Errorf("NVIDIA_API_KEY is not configured")
 	}
 	return cfg, nil
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/lhilove/security-copilot/internal/ai"
 	"github.com/lhilove/security-copilot/internal/auth"
 	"github.com/lhilove/security-copilot/internal/config"
 	"github.com/lhilove/security-copilot/internal/database"
@@ -46,6 +47,9 @@ func main() {
 	repoService := repositories.NewService(repoRepo, connRepo, cfg.EncryptionKey)
 	findingService := findings.NewService(findingRepo, repoRepo, connRepo, cfg.EncryptionKey)
 	webhookHandler := gh.NewWebhookHandler(repoRepo, findingRepo, findings.NormalizeSeverity)
+
+	// AI layer
+	aiProvider := ai.NewNvidiaProvider(cfg.NvidiaAPIKey, cfg.NvidiaBaseURL, cfg.AIModel)
 
 	router := gin.Default()
 	router.SetTrustedProxies(nil)
@@ -271,6 +275,50 @@ func main() {
 					"total":    score.Total,
 				},
 			},
+		})
+	})
+
+	authorized.POST("/findings/:id/analyze", func(c *gin.Context) {
+		userID := c.GetString("user_id")
+		findingID := c.Param("id")
+
+		// Get the finding and verify it belongs to a repo owned by this user
+		finding, err := findingRepo.GetFindingByID(c.Request.Context(), userID, findingID)
+		if err != nil {
+			log.Printf("get finding: %v", err)
+			c.JSON(404, gin.H{"error": "finding not found"})
+			return
+		}
+
+		req := ai.AnalysisRequest{
+			Source:      finding.Source,
+			Severity:    finding.Severity,
+			Title:       finding.Title,
+			Description: finding.Description,
+			FilePath:    finding.FilePath,
+			PackageName: finding.PackageName,
+			CVEID:       finding.CVEID,
+			SecretType:  finding.SecretType,
+		}
+
+		if finding.LineNumber != nil {
+			req.LineNumber = *finding.LineNumber
+		}
+
+		result, err := aiProvider.Analyze(c.Request.Context(), req)
+		if err != nil {
+			log.Printf("ai analyze: %v", err)
+			c.JSON(500, gin.H{"error": "analysis failed"})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"finding_id":    findingID,
+			"what":          result.What,
+			"risk":          result.Risk,
+			"fix":           result.Fix,
+			"proposed_code": result.ProposedCode,
+			"can_auto_fix":  result.CanAutoFix,
 		})
 	})
 

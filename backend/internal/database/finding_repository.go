@@ -173,3 +173,37 @@ func (r *FindingRepository) GetFindingSummary(ctx context.Context, repositoryID 
 
 	return s, nil
 }
+
+func (r *FindingRepository) GetFindingByID(ctx context.Context, userID, findingID string) (*Finding, error) {
+	query := `
+		SELECT f.id, f.repository_id, f.source, f.source_alert_id,
+			f.severity, f.title, f.description, f.state,
+			f.file_path, f.line_number, f.package_name, f.cve_id, f.secret_type
+		FROM findings f
+		JOIN repositories r ON r.id = f.repository_id
+		WHERE f.id = $1
+		AND r.user_id = $2
+	`
+
+	var f Finding
+	err := r.pool.QueryRow(ctx, query, findingID, userID).Scan(
+		&f.ID,
+		&f.RepositoryID,
+		&f.Source,
+		&f.SourceAlertID,
+		&f.Severity,
+		&f.Title,
+		&f.Description,
+		&f.State,
+		&f.FilePath,
+		&f.LineNumber,
+		&f.PackageName,
+		&f.CVEID,
+		&f.SecretType,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get finding: %w", err)
+	}
+
+	return &f, nil
+}
