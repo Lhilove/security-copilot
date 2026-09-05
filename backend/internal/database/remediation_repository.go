@@ -31,15 +31,17 @@ type Remediation struct {
 	DeclinedAt   *string
 	CreatedAt    string
 	UpdatedAt    string
+	FileSHA      string
+	FileContent  string
 }
 
 // CreateRemediation stores a new AI-generated remediation proposal.
 func (r *RemediationRepository) CreateRemediation(ctx context.Context, rem Remediation) (*Remediation, error) {
 	query := `
 		INSERT INTO remediations (
-			finding_id, user_id, what, risk, fix, proposed_code, can_auto_fix, status
+			finding_id, user_id, what, risk, fix, proposed_code, can_auto_fix, status, file_sha, file_content
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
+		VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9)
 		ON CONFLICT (finding_id, user_id)
 		DO UPDATE SET
 			what          = EXCLUDED.what,
@@ -52,6 +54,8 @@ func (r *RemediationRepository) CreateRemediation(ctx context.Context, rem Remed
 			declined_at   = NULL,
 			pr_url        = NULL,
 			pr_number     = NULL,
+			file_sha      = EXCLUDED.file_sha,
+ 			file_content  = EXCLUDED.file_content,
 			updated_at    = NOW()
 		RETURNING id, finding_id, user_id, what, risk, fix,
 			proposed_code, can_auto_fix, status, created_at::text, updated_at::text
@@ -66,6 +70,8 @@ func (r *RemediationRepository) CreateRemediation(ctx context.Context, rem Remed
 		rem.Fix,
 		rem.ProposedCode,
 		rem.CanAutoFix,
+		rem.FileSHA,
+		rem.FileContent,
 	).Scan(
 		&result.ID,
 		&result.FindingID,
@@ -95,7 +101,9 @@ func (r *RemediationRepository) GetRemediation(ctx context.Context, findingID, u
 			approved_at::text,
 			declined_at::text,
 			created_at::text,
-			updated_at::text
+			updated_at::text,
+			COALESCE(file_sha, ''),
+			COALESCE(file_content, '')
 		FROM remediations
 		WHERE finding_id = $1 AND user_id = $2
 	`
@@ -116,6 +124,8 @@ func (r *RemediationRepository) GetRemediation(ctx context.Context, findingID, u
 		&result.DeclinedAt,
 		&result.CreatedAt,
 		&result.UpdatedAt,
+		&result.FileSHA,
+		&result.FileContent,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get remediation: %w", err)

@@ -65,14 +65,15 @@ func main() {
 
 	// Services
 	srv := &Server{
-		cfg:             cfg,
-		authService:     auth.NewService(cfg, userRepo, connRepo),
-		repoService:     repositories.NewService(repoRepo, connRepo, cfg.EncryptionKey),
-		findingService:  findings.NewService(findingRepo, repoRepo, connRepo, cfg.EncryptionKey),
-		webhookSvc:      gh.NewWebhookHandler(repoRepo, findingRepo, findings.NormalizeSeverity),
-		repoRepo:        repoRepo,
-		findingRepo:     findingRepo,
-		aiProvider:      ai.NewNvidiaProvider(cfg.NvidiaAPIKey, cfg.NvidiaBaseURL, cfg.AIModel),
+		cfg:            cfg,
+		authService:    auth.NewService(cfg, userRepo, connRepo),
+		repoService:    repositories.NewService(repoRepo, connRepo, cfg.EncryptionKey),
+		findingService: findings.NewService(findingRepo, repoRepo, connRepo, cfg.EncryptionKey),
+		webhookSvc:     gh.NewWebhookHandler(repoRepo, findingRepo, findings.NormalizeSeverity),
+		repoRepo:       repoRepo,
+		findingRepo:    findingRepo,
+		// aiProvider:      ai.NewNvidiaProvider(cfg.NvidiaAPIKey, cfg.NvidiaBaseURL, cfg.AIModel),
+		aiProvider:      ai.NewMockProvider(),
 		remediationRepo: remediationRepo,
 	}
 
@@ -102,6 +103,7 @@ func main() {
 	authorized.POST("/findings/:id/approve", srv.approveRemediationHandler)
 	authorized.POST("/findings/:id/decline", srv.declineRemediationHandler)
 	authorized.GET("/remediations", srv.listRemediationsHandler)
+	authorized.POST("/findings/:id/pr", srv.createPRHandler)
 
 	log.Println("Security Copilot API running on :8080")
 	if err := router.Run(":8080"); err != nil {

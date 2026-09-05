@@ -91,7 +91,7 @@ Active development. Phase 1, 2 complete.
 ### Phase 5 — Controlled remediation
 
 - [x] Remediation approval workflow
-- [ ] Pull request generation
+- [x] Pull request generation
 - [ ] Security validation
 - [x] Audit logging
 

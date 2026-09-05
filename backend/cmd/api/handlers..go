@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lhilove/security-copilot/internal/ai"
@@ -351,6 +353,22 @@ func (s *Server) analyzeFindingHandler(c *gin.Context) {
 		return
 	}
 
+	// Get the repository for this finding
+	repo, err := s.repoRepo.GetRepositoryByID(c.Request.Context(), userID, finding.RepositoryID)
+	if err != nil {
+		log.Printf("get repository: %v", err)
+		c.JSON(500, gin.H{"error": "failed to get repository"})
+		return
+	}
+
+	// Decrypt the GitHub token
+	token, err := s.findingService.DecryptToken(c.Request.Context(), userID)
+	if err != nil {
+		log.Printf("decrypt token: %v", err)
+		c.JSON(500, gin.H{"error": "failed to get github token"})
+		return
+	}
+
 	req := ai.AnalysisRequest{
 		Source:      finding.Source,
 		Severity:    finding.Severity,
@@ -364,6 +382,22 @@ func (s *Server) analyzeFindingHandler(c *gin.Context) {
 
 	if finding.LineNumber != nil {
 		req.LineNumber = *finding.LineNumber
+	}
+
+	// Fetch actual file content if we have a file path
+	var fileSHA, fileContent string
+	if finding.FilePath != "" && finding.LineNumber != nil {
+		ghClient := gh.NewClient(token)
+		content, sha, err := ghClient.GetFileContent(c.Request.Context(), repo.Owner, repo.Name, finding.FilePath)
+		if err != nil {
+			// Non-fatal: log and continue without code context
+			log.Printf("fetch file content for %s: %v", finding.FilePath, err)
+		} else {
+			fileContent = content
+			fileSHA = sha
+			req.AffectedCode = gh.ExtractCodeContext(content, *finding.LineNumber, 10)
+			req.Language = detectLanguage(finding.FilePath)
+		}
 	}
 
 	result, err := s.aiProvider.Analyze(c.Request.Context(), req)
@@ -381,6 +415,8 @@ func (s *Server) analyzeFindingHandler(c *gin.Context) {
 		Fix:          result.Fix,
 		ProposedCode: result.ProposedCode,
 		CanAutoFix:   result.CanAutoFix,
+		FileSHA:      fileSHA,     // from GetFileContent
+		FileContent:  fileContent, // full file content
 	})
 	if err != nil {
 		log.Printf("create remediation: %v", err)
@@ -480,4 +516,214 @@ func (s *Server) listRemediationsHandler(c *gin.Context) {
 		"remediations": remediations,
 		"count":        len(remediations),
 	})
+}
+
+func detectLanguage(filePath string) string {
+	switch {
+	case strings.HasSuffix(filePath, ".py"):
+		return "python"
+	case strings.HasSuffix(filePath, ".go"):
+		return "go"
+	case strings.HasSuffix(filePath, ".js"), strings.HasSuffix(filePath, ".ts"):
+		return "javascript"
+	case strings.HasSuffix(filePath, ".java"):
+		return "java"
+	case strings.HasSuffix(filePath, ".rb"):
+		return "ruby"
+	case strings.HasSuffix(filePath, ".php"):
+		return "php"
+	default:
+		return "unknown"
+	}
+}
+
+// createPRHandler godoc
+// @Summary     Create pull request
+// @Description Creates a GitHub pull request with the approved remediation fix
+// @Tags        remediations
+// @Produce     json
+// @Security    BearerAuth
+// @Param       id path string true "Finding UUID"
+// @Success     200 {object} map[string]interface{}
+// @Failure     401 {object} map[string]string
+// @Failure     404 {object} map[string]string
+// @Failure     500 {object} map[string]string
+// @Router      /api/v1/findings/{id}/pr [post]
+func (s *Server) createPRHandler(c *gin.Context) {
+	userID := c.GetString("user_id")
+	findingID := c.Param("id")
+
+	// Get the approved remediation
+	remediation, err := s.remediationRepo.GetRemediation(c.Request.Context(), findingID, userID)
+	if err != nil {
+		log.Printf("get remediation: %v", err)
+		c.JSON(404, gin.H{"error": "no remediation found for this finding"})
+		return
+	}
+
+	if remediation.Status != "approved" {
+		c.JSON(400, gin.H{"error": "remediation must be approved before creating a PR"})
+		return
+	}
+
+	if !remediation.CanAutoFix || remediation.ProposedCode == "" {
+		c.JSON(400, gin.H{"error": "this finding does not have an auto-fixable proposed code change"})
+		return
+	}
+
+	// Get the finding for file path info
+	finding, err := s.findingRepo.GetFindingByID(c.Request.Context(), userID, findingID)
+	if err != nil {
+		log.Printf("get finding: %v", err)
+		c.JSON(404, gin.H{"error": "finding not found"})
+		return
+	}
+
+	if finding.FilePath == "" {
+		c.JSON(400, gin.H{"error": "finding has no file path, cannot create PR"})
+		return
+	}
+
+	// Get the repository
+	repo, err := s.repoRepo.GetRepositoryByID(c.Request.Context(), userID, finding.RepositoryID)
+	if err != nil {
+		log.Printf("get repository: %v", err)
+		c.JSON(500, gin.H{"error": "failed to get repository"})
+		return
+	}
+
+	// Decrypt token
+	token, err := s.findingService.DecryptToken(c.Request.Context(), userID)
+	if err != nil {
+		log.Printf("decrypt token: %v", err)
+		c.JSON(500, gin.H{"error": "failed to get github token"})
+		return
+	}
+
+	ghClient := gh.NewClient(token)
+
+	// Get default branch and its SHA
+	defaultBranch, baseSHA, err := ghClient.GetDefaultBranchSHA(c.Request.Context(), repo.Owner, repo.Name)
+	if err != nil {
+		log.Printf("get default branch: %v", err)
+		c.JSON(500, gin.H{"error": "failed to get repository branch info"})
+		return
+	}
+
+	// Create a new branch for the fix
+	branchName := fmt.Sprintf("security-copilot/fix-%s", findingID[:8])
+	if err := ghClient.CreateBranch(c.Request.Context(), repo.Owner, repo.Name, branchName, baseSHA); err != nil {
+		log.Printf("create branch: %v", err)
+		c.JSON(500, gin.H{"error": "failed to create branch"})
+		return
+	}
+
+	// Apply the fix: replace the file content with the proposed code
+	// For now we use the proposed code directly as the new file content
+	// In a future version this will be a precise patch application
+	var newContent string
+	if remediation.FileContent != "" {
+		// We have the original file, apply the fix intelligently
+		newContent = applyFix(remediation.FileContent, remediation.ProposedCode, finding.LineNumber)
+	} else {
+		// Fall back to proposed code only
+		newContent = remediation.ProposedCode
+	}
+
+	commitMessage := fmt.Sprintf("fix: remediate %s in %s\n\nAutomated fix by Security Copilot\nFinding: %s\n\n%s",
+		finding.Title,
+		finding.FilePath,
+		findingID,
+		remediation.What,
+	)
+
+	if err := ghClient.UpdateFile(
+		c.Request.Context(),
+		repo.Owner,
+		repo.Name,
+		finding.FilePath,
+		commitMessage,
+		newContent,
+		remediation.FileSHA,
+		branchName,
+	); err != nil {
+		log.Printf("update file: %v", err)
+		c.JSON(500, gin.H{"error": "failed to commit fix"})
+		return
+	}
+
+	// Open the pull request
+	prTitle := fmt.Sprintf("fix: remediate %s", finding.Title)
+	prBody := fmt.Sprintf("## Security Copilot Automated Fix\n\n**Finding:** %s\n\n**What:** %s\n\n**Risk:** %s\n\n**Fix:** %s\n\n---\n*This PR was generated by Security Copilot and approved by the repository owner.*",
+		finding.Title,
+		remediation.What,
+		remediation.Risk,
+		remediation.Fix,
+	)
+
+	pr, err := ghClient.CreatePullRequest(
+		c.Request.Context(),
+		repo.Owner,
+		repo.Name,
+		prTitle,
+		prBody,
+		branchName,
+		defaultBranch,
+	)
+	if err != nil {
+		log.Printf("create pr: %v", err)
+		c.JSON(500, gin.H{"error": "failed to create pull request"})
+		return
+	}
+
+	// Update remediation status
+	if err := s.remediationRepo.UpdatePRDetails(
+		c.Request.Context(),
+		findingID,
+		userID,
+		pr.HTMLURL,
+		pr.Number,
+	); err != nil {
+		log.Printf("update pr details: %v", err)
+	}
+
+	c.JSON(200, gin.H{
+		"message":    "pull request created successfully",
+		"pr_url":     pr.HTMLURL,
+		"pr_number":  pr.Number,
+		"branch":     branchName,
+		"repository": repo.FullName,
+	})
+}
+
+// applyFix replaces the code around the vulnerable line with the proposed fix.
+// This is a simple line-based replacement. A future version will use proper
+// AST-based patching for more precise changes.
+func applyFix(originalContent, proposedCode string, lineNumber *int) string {
+	if lineNumber == nil || *lineNumber <= 0 {
+		return proposedCode
+	}
+
+	lines := strings.Split(originalContent, "\n")
+	if *lineNumber > len(lines) {
+		return originalContent
+	}
+
+	// Find the vulnerable line and replace with proposed fix
+	// Insert the fix after the vulnerable line as a comment + fix block
+	fixLines := strings.Split(proposedCode, "\n")
+	result := make([]string, 0, len(lines)+len(fixLines))
+
+	for i, line := range lines {
+		if i == *lineNumber-1 {
+			// Add a comment marking the original vulnerable line
+			result = append(result, "# SECURITY COPILOT: replaced vulnerable code below")
+			result = append(result, "# Original: "+line)
+			result = append(result, fixLines...)
+		} else {
+			result = append(result, line)
+		}
+	}
+
+	return strings.Join(result, "\n")
 }

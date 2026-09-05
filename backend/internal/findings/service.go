@@ -40,7 +40,7 @@ func (s *Service) SyncRepository(ctx context.Context, userID, repoID string) (in
 		return 0, fmt.Errorf("get repository: %w", err)
 	}
 
-	token, err := s.decryptToken(ctx, userID)
+	token, err := s.DecryptToken(ctx, userID)
 	if err != nil {
 		return 0, fmt.Errorf("decrypt token: %w", err)
 	}
@@ -160,7 +160,7 @@ func NormalizeSeverity(s string) string {
 	}
 }
 
-func (s *Service) decryptToken(ctx context.Context, userID string) (string, error) {
+func (s *Service) DecryptToken(ctx context.Context, userID string) (string, error) {
 	conn, err := s.conns.GetConnection(ctx, userID)
 	if err != nil {
 		return "", fmt.Errorf("get connection: %w", err)
