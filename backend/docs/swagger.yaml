@@ -1,0 +1,369 @@
+basePath: /
+host: localhost:8080
+info:
+  contact:
+    email: pelumiade92@gmail.com
+    name: Adewole Oluwapelumi
+    url: https://linkedin.com/in/adewole-oluwapelumi
+  description: |-
+    AI-powered application security remediation for GitHub repositories.
+    Aggregates GitHub Code Scanning, Dependabot, and Secret Scanning findings,
+    provides AI-generated business impact analysis and remediation proposals,
+    and manages a controlled developer approval workflow.
+  license:
+    name: MIT
+  title: Security Copilot API
+  version: "1.0"
+paths:
+  /api/v1/auth/github:
+    get:
+      description: Redirects the user to GitHub for OAuth authorization
+      responses:
+        "302":
+          description: Found
+      summary: Initiate GitHub OAuth
+      tags:
+      - auth
+  /api/v1/auth/github/callback:
+    get:
+      description: Handles the GitHub OAuth callback, persists the user and encrypted
+        token, returns a JWT
+      parameters:
+      - description: Authorization code from GitHub
+        in: query
+        name: code
+        required: true
+        type: string
+      - description: OAuth state parameter
+        in: query
+        name: state
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: GitHub OAuth callback
+      tags:
+      - auth
+  /api/v1/findings/{id}/analyze:
+    post:
+      description: Sends a security finding to DeepSeek AI for business impact analysis
+        and remediation proposal
+      parameters:
+      - description: Finding UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Analyze finding with AI
+      tags:
+      - findings
+  /api/v1/repositories:
+    get:
+      description: Syncs and returns all GitHub repositories for the authenticated
+        user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List repositories
+      tags:
+      - repositories
+  /api/v1/repositories/{id}/findings:
+    get:
+      description: Returns all security findings for a repository, ordered by severity
+      parameters:
+      - description: Repository UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List findings
+      tags:
+      - findings
+  /api/v1/repositories/{id}/overview:
+    get:
+      description: Returns risk score and finding severity breakdown for a repository
+      parameters:
+      - description: Repository UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Repository security overview
+      tags:
+      - repositories
+  /api/v1/repositories/{id}/select:
+    delete:
+      description: Removes a repository from Security Copilot monitoring
+      parameters:
+      - description: Repository UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Deselect repository
+      tags:
+      - repositories
+    post:
+      description: Marks a repository as monitored by Security Copilot
+      parameters:
+      - description: Repository UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Select repository for monitoring
+      tags:
+      - repositories
+  /api/v1/repositories/{id}/sync:
+    post:
+      description: Fetches latest findings from GitHub Code Scanning, Dependabot,
+        and Secret Scanning
+      parameters:
+      - description: Repository UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Sync security findings
+      tags:
+      - findings
+  /api/v1/webhooks/github:
+    post:
+      consumes:
+      - application/json
+      description: Receives and processes GitHub security event webhooks. Verifies
+        HMAC-SHA256 signature before processing.
+      parameters:
+      - description: GitHub webhook signature
+        in: header
+        name: X-Hub-Signature-256
+        required: true
+        type: string
+      - description: GitHub event type
+        in: header
+        name: X-GitHub-Event
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: GitHub webhook receiver
+      tags:
+      - webhooks
+  /health:
+    get:
+      description: Returns the service status
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Health check
+      tags:
+      - system
+securityDefinitions:
+  BearerAuth:
+    description: 'JWT token. Format: "Bearer <token>"'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
