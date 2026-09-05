@@ -61,17 +61,19 @@ func main() {
 	connRepo := database.NewGitHubConnectionRepository(db)
 	repoRepo := database.NewRepositoryRepository(db)
 	findingRepo := database.NewFindingRepository(db)
+	remediationRepo := database.NewRemediationRepository(db)
 
 	// Services
 	srv := &Server{
-		cfg:            cfg,
-		authService:    auth.NewService(cfg, userRepo, connRepo),
-		repoService:    repositories.NewService(repoRepo, connRepo, cfg.EncryptionKey),
-		findingService: findings.NewService(findingRepo, repoRepo, connRepo, cfg.EncryptionKey),
-		webhookSvc:     gh.NewWebhookHandler(repoRepo, findingRepo, findings.NormalizeSeverity),
-		repoRepo:       repoRepo,
-		findingRepo:    findingRepo,
-		aiProvider:     ai.NewNvidiaProvider(cfg.NvidiaAPIKey, cfg.NvidiaBaseURL, cfg.AIModel),
+		cfg:             cfg,
+		authService:     auth.NewService(cfg, userRepo, connRepo),
+		repoService:     repositories.NewService(repoRepo, connRepo, cfg.EncryptionKey),
+		findingService:  findings.NewService(findingRepo, repoRepo, connRepo, cfg.EncryptionKey),
+		webhookSvc:      gh.NewWebhookHandler(repoRepo, findingRepo, findings.NormalizeSeverity),
+		repoRepo:        repoRepo,
+		findingRepo:     findingRepo,
+		aiProvider:      ai.NewNvidiaProvider(cfg.NvidiaAPIKey, cfg.NvidiaBaseURL, cfg.AIModel),
+		remediationRepo: remediationRepo,
 	}
 
 	router := gin.Default()
@@ -97,6 +99,9 @@ func main() {
 	authorized.GET("/repositories/:id/findings", srv.listFindingsHandler)
 	authorized.GET("/repositories/:id/overview", srv.repositoryOverviewHandler)
 	authorized.POST("/findings/:id/analyze", srv.analyzeFindingHandler)
+	authorized.POST("/findings/:id/approve", srv.approveRemediationHandler)
+	authorized.POST("/findings/:id/decline", srv.declineRemediationHandler)
+	authorized.GET("/remediations", srv.listRemediationsHandler)
 
 	log.Println("Security Copilot API running on :8080")
 	if err := router.Run(":8080"); err != nil {

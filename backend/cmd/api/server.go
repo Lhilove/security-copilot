@@ -12,12 +12,13 @@ import (
 
 // Server holds all dependencies and is the receiver for all HTTP handlers.
 type Server struct {
-	cfg            *config.Config
-	authService    *auth.Service
-	repoService    *repositories.Service
-	findingService *findings.Service
-	webhookSvc     *gh.WebhookHandler
-	repoRepo       *database.RepositoryRepository
-	findingRepo    *database.FindingRepository
-	aiProvider     ai.Provider
+	cfg             *config.Config
+	authService     *auth.Service
+	repoService     *repositories.Service
+	findingService  *findings.Service
+	webhookSvc      *gh.WebhookHandler
+	repoRepo        *database.RepositoryRepository
+	findingRepo     *database.FindingRepository
+	remediationRepo *database.RemediationRepository
+	aiProvider      ai.Provider
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lhilove/security-copilot/internal/ai"
 	"github.com/lhilove/security-copilot/internal/auth"
+	"github.com/lhilove/security-copilot/internal/database"
 	gh "github.com/lhilove/security-copilot/internal/github"
 	"github.com/lhilove/security-copilot/internal/risk"
 )
@@ -371,13 +372,112 @@ func (s *Server) analyzeFindingHandler(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "analysis failed"})
 		return
 	}
+	// Persist the remediation proposal
+	remediation, err := s.remediationRepo.CreateRemediation(c.Request.Context(), database.Remediation{
+		FindingID:    findingID,
+		UserID:       userID,
+		What:         result.What,
+		Risk:         result.Risk,
+		Fix:          result.Fix,
+		ProposedCode: result.ProposedCode,
+		CanAutoFix:   result.CanAutoFix,
+	})
+	if err != nil {
+		log.Printf("create remediation: %v", err)
+		c.JSON(500, gin.H{"error": "failed to save remediation"})
+		return
+	}
 
 	c.JSON(200, gin.H{
-		"finding_id":    findingID,
-		"what":          result.What,
-		"risk":          result.Risk,
-		"fix":           result.Fix,
-		"proposed_code": result.ProposedCode,
-		"can_auto_fix":  result.CanAutoFix,
+		"remediation_id": remediation.ID,
+		"finding_id":     findingID,
+		"what":           result.What,
+		"risk":           result.Risk,
+		"fix":            result.Fix,
+		"proposed_code":  result.ProposedCode,
+		"can_auto_fix":   result.CanAutoFix,
+	})
+}
+
+// approveRemediationHandler godoc
+// @Summary     Approve remediation
+// @Description Developer approves the AI-proposed fix, triggering PR creation
+// @Tags        remediations
+// @Produce     json
+// @Security    BearerAuth
+// @Param       id path string true "Finding UUID"
+// @Success     200 {object} map[string]interface{}
+// @Failure     401 {object} map[string]string
+// @Failure     404 {object} map[string]string
+// @Router      /api/v1/findings/{id}/approve [post]
+func (s *Server) approveRemediationHandler(c *gin.Context) {
+	userID := c.GetString("user_id")
+	findingID := c.Param("id")
+
+	remediation, err := s.remediationRepo.ApproveRemediation(c.Request.Context(), findingID, userID)
+	if err != nil {
+		log.Printf("approve remediation: %v", err)
+		c.JSON(404, gin.H{"error": "no pending remediation found for this finding"})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"remediation_id": remediation.ID,
+		"finding_id":     findingID,
+		"status":         remediation.Status,
+		"message":        "remediation approved, PR creation coming soon",
+	})
+}
+
+// declineRemediationHandler godoc
+// @Summary     Decline remediation
+// @Description Developer declines the AI-proposed fix
+// @Tags        remediations
+// @Produce     json
+// @Security    BearerAuth
+// @Param       id path string true "Finding UUID"
+// @Success     200 {object} map[string]string
+// @Failure     401 {object} map[string]string
+// @Failure     404 {object} map[string]string
+// @Router      /api/v1/findings/{id}/decline [post]
+func (s *Server) declineRemediationHandler(c *gin.Context) {
+	userID := c.GetString("user_id")
+	findingID := c.Param("id")
+
+	if err := s.remediationRepo.DeclineRemediation(c.Request.Context(), findingID, userID); err != nil {
+		log.Printf("decline remediation: %v", err)
+		c.JSON(404, gin.H{"error": "no pending remediation found for this finding"})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"finding_id": findingID,
+		"status":     "declined",
+		"message":    "remediation declined",
+	})
+}
+
+// listRemediationsHandler godoc
+// @Summary     List remediations
+// @Description Returns all remediation proposals for the authenticated user
+// @Tags        remediations
+// @Produce     json
+// @Security    BearerAuth
+// @Success     200 {object} map[string]interface{}
+// @Failure     401 {object} map[string]string
+// @Router      /api/v1/remediations [get]
+func (s *Server) listRemediationsHandler(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	remediations, err := s.remediationRepo.GetRemediationsByUserID(c.Request.Context(), userID)
+	if err != nil {
+		log.Printf("list remediations: %v", err)
+		c.JSON(500, gin.H{"error": "failed to retrieve remediations"})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"remediations": remediations,
+		"count":        len(remediations),
 	})
 }

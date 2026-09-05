@@ -23,7 +23,7 @@ func NewNvidiaProvider(apiKey, baseURL, model string) *NvidiaProvider {
 		apiKey:  apiKey,
 		baseURL: baseURL,
 		model:   model,
-		client:  &http.Client{Timeout: 120 * time.Second}, // generous timeout for AI analysis
+		client:  &http.Client{Timeout: 3 * time.Minute}, // generous timeout for AI analysis
 	}
 }
 

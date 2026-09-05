@@ -84,16 +84,16 @@ Active development. Phase 1, 2 complete.
 
 - [x] AI provider abstraction
 - [x] Vulnerability explanation
-- [ ] Remediation generation
-- [ ] Output validation
-- [ ] Prompt injection defenses
+- [x] Remediation generation
+- [x] Output validation
+- [x] Prompt injection defenses
 
 ### Phase 5 — Controlled remediation
 
-- [ ] Remediation approval workflow
+- [x] Remediation approval workflow
 - [ ] Pull request generation
 - [ ] Security validation
-- [ ] Audit logging
+- [x] Audit logging
 
 ### Phase 6 — Notifications
 
