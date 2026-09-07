@@ -72,8 +72,8 @@ func main() {
 		webhookSvc:     gh.NewWebhookHandler(repoRepo, findingRepo, findings.NormalizeSeverity),
 		repoRepo:       repoRepo,
 		findingRepo:    findingRepo,
-		// aiProvider:      ai.NewNvidiaProvider(cfg.NvidiaAPIKey, cfg.NvidiaBaseURL, cfg.AIModel),
-		aiProvider:      ai.NewMockProvider(),
+		aiProvider:     ai.NewNvidiaProvider(cfg.NvidiaAPIKey, cfg.NvidiaBaseURL, cfg.AIModel),
+		// aiProvider:      ai.NewMockProvider(),
 		remediationRepo: remediationRepo,
 	}
 

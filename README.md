@@ -102,10 +102,10 @@ Active development. Phase 1, 2 complete.
 
 ### Phase 7 — Frontend
 
-- [ ] React dashboard
-- [ ] Repository security overview
-- [ ] Finding details and business impact view
-- [ ] Remediation review and approval interface
+- [x] React dashboard
+- [x] Repository security overview
+- [x] Finding details and business impact view
+- [x] Remediation review and approval interface
 
 ---
 

@@ -65,10 +65,6 @@ export default function RepositoryPage() {
     mutationFn: () => api.syncFindings(id!),
   })
 
-  const critical = findings?.filter(f => f.Severity === 'critical') ?? []
-  const high = findings?.filter(f => f.Severity === 'high') ?? []
-  const medium = findings?.filter(f => f.Severity === 'medium') ?? []
-  const low = findings?.filter(f => f.Severity === 'low') ?? []
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>

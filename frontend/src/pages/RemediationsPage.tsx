@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Shield, GitPullRequest, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { ArrowLeft, Shield } from 'lucide-react'
 import { api } from '../api'
 import type { Remediation } from '../types'
 

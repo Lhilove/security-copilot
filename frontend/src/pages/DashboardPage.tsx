@@ -4,14 +4,6 @@ import { Shield, RefreshCw, Lock, Unlock, AlertTriangle } from 'lucide-react'
 import { api } from '../api'
 import type { Repository } from '../types'
 
-// Severity score color based on risk score number
-function getRiskColor(score: number): string {
-  if (score >= 80) return 'var(--safe)'
-  if (score >= 50) return 'var(--medium)'
-  if (score >= 20) return 'var(--high)'
-  return 'var(--critical)'
-}
-
 // Single repository card shown in the grid
 function RepositoryCard({ repo }: { repo: Repository }) {
   const navigate = useNavigate()
