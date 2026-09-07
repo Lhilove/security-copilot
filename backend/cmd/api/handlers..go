@@ -97,11 +97,9 @@ func (s *Server) githubCallbackHandler(c *gin.Context) {
 		return
 	}
 
-	c.JSON(200, gin.H{
-		"message": "GitHub connected successfully",
-		"token":   result.Token,
-		"user":    result.User,
-	})
+	// Redirect to frontend callback page with JWT in URL
+	// The frontend reads the token, stores it in session, and redirects to dashboard
+	c.Redirect(302, fmt.Sprintf("%s/callback?token=%s", s.cfg.FrontendURL, result.Token))
 }
 
 // webhookHandler godoc

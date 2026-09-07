@@ -20,6 +20,7 @@ type Config struct {
 	NvidiaAPIKey        string
 	NvidiaBaseURL       string
 	AIModel             string
+	FrontendURL         string
 }
 
 func Load() (*Config, error) {
@@ -90,6 +91,11 @@ func Load() (*Config, error) {
 
 	if cfg.NvidiaAPIKey == "" {
 		return nil, fmt.Errorf("NVIDIA_API_KEY is not configured")
+	}
+
+	cfg.FrontendURL = os.Getenv("FRONTEND_URL")
+	if cfg.FrontendURL == "" {
+		cfg.FrontendURL = "http://localhost:5173" // default for development
 	}
 	return cfg, nil
 }
