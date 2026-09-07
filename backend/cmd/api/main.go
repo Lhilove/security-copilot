@@ -5,137 +5,107 @@ import (
 	"log"
 
 	"github.com/gin-gonic/gin"
-
+	_ "github.com/lhilove/security-copilot/docs"
+	"github.com/lhilove/security-copilot/internal/ai"
 	"github.com/lhilove/security-copilot/internal/auth"
 	"github.com/lhilove/security-copilot/internal/config"
 	"github.com/lhilove/security-copilot/internal/database"
+	"github.com/lhilove/security-copilot/internal/findings"
+	gh "github.com/lhilove/security-copilot/internal/github"
+	"github.com/lhilove/security-copilot/internal/repositories"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
+// @title           Security Copilot API
+// @version         1.0
+// @description     AI-powered application security remediation for GitHub repositories.
+// @description     Aggregates GitHub Code Scanning, Dependabot, and Secret Scanning findings,
+// @description     provides AI-generated business impact analysis and remediation proposals,
+// @description     and manages a controlled developer approval workflow.
+
+// @contact.name    Adewole Oluwapelumi
+// @contact.url     https://linkedin.com/in/adewole-oluwapelumi
+// @contact.email   pelumiade92@gmail.com
+
+// @license.name    MIT
+
+// @host            localhost:8080
+// @BasePath        /
+
+// @securityDefinitions.apikey  BearerAuth
+// @in                          header
+// @name                        Authorization
+// @description                 JWT token. Format: "Bearer <token>"
+
 func main() {
-	// load the configuration from environment variables or .env file
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// establish a connection to the PostgreSQL database using the provided database URL
+	if err := database.Migrate(cfg.DatabaseURL, cfg.MigrationsPath); err != nil {
+		log.Fatalf("run migrations: %v", err)
+	}
+	log.Println("Database migrations applied")
+
 	db, err := database.Connect(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
-
 	log.Println("Database connection established")
 
-	githubAuth := auth.NewGitHubAuth(cfg) // Initialize GitHub OAuth with the loaded configuration
+	// Data access
+	userRepo := database.NewUserRepository(db)
+	connRepo := database.NewGitHubConnectionRepository(db)
+	repoRepo := database.NewRepositoryRepository(db)
+	findingRepo := database.NewFindingRepository(db)
+	remediationRepo := database.NewRemediationRepository(db)
+
+	// Services
+	srv := &Server{
+		cfg:            cfg,
+		authService:    auth.NewService(cfg, userRepo, connRepo),
+		repoService:    repositories.NewService(repoRepo, connRepo, cfg.EncryptionKey),
+		findingService: findings.NewService(findingRepo, repoRepo, connRepo, cfg.EncryptionKey),
+		webhookSvc:     gh.NewWebhookHandler(repoRepo, findingRepo, findings.NormalizeSeverity),
+		repoRepo:       repoRepo,
+		findingRepo:    findingRepo,
+		aiProvider:     ai.NewNvidiaProvider(cfg.NvidiaAPIKey, cfg.NvidiaBaseURL, cfg.AIModel),
+		// aiProvider:      ai.NewMockProvider(),
+		remediationRepo: remediationRepo,
+	}
 
 	router := gin.Default()
+	router.SetTrustedProxies(nil)
 
-	//
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"status":  "ok",
-			"service": "security-copilot-api",
-		})
-	})
+	// Docs
+	router.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// GitHub OAuth routes
-	router.GET("/api/v1/auth/github", func(c *gin.Context) {
-		// Generate a random state string for CSRF protection
-		state, err := githubAuth.GenerateState()
-		if err != nil {
-			c.JSON(500, gin.H{
-				"error": "failed to generate OAuth state",
-			})
-			return
-		}
-		// Set the state in a cookie for later validation
-		c.SetCookie(
-			"oauth_state", // Cookie name
-			state,
-			600, // 10 minutes
-			"/", // Cookie path
-			"",
-			false,
-			true,
-		)
+	// Public routes
+	router.GET("/health", srv.healthHandler)
+	router.GET("/api/v1/auth/github", srv.githubLoginHandler)
+	router.GET("/api/v1/auth/github/callback", srv.githubCallbackHandler)
+	router.POST("/api/v1/webhooks/github", srv.webhookHandler)
 
-		c.Redirect(302, githubAuth.LoginURL(state))
-	})
+	// Authenticated routes
+	authorized := router.Group("/api/v1")
+	authorized.Use(auth.RequireAuth(cfg.JWTSecret))
 
-	// GitHub OAuth callback route
-	router.GET("/api/v1/auth/github/callback", func(c *gin.Context) {
-		code := c.Query("code")           // Get the authorization code from the query string
-		receivedState := c.Query("state") // Get the state parameter from the query string
-
-		// Validate the received state against the expected state
-		if code == "" {
-			c.JSON(400, gin.H{
-				"error": "missing authorization code",
-			})
-			return
-		}
-		// Retrieve the expected state from the cookie
-		expectedState, err := c.Cookie("oauth_state")
-		if err != nil {
-			c.JSON(400, gin.H{
-				"error": "missing OAuth state",
-			})
-			return
-		}
-
-		// Validate the received state against the expected state
-		if !auth.ValidateState(expectedState, receivedState) {
-			c.JSON(400, gin.H{
-				"error": "invalid OAuth state",
-			})
-			return
-		}
-
-		// State has been verified. It should not be reusable.
-		c.SetCookie(
-			"oauth_state",
-			"",
-			-1,  // Delete the cookie by setting a negative max age
-			"/", // Cookie path
-			"",
-			false, // Not secure (for development purposes)
-			true,  // HttpOnly
-		)
-
-		// Exchange the authorization code for an access token
-		token, err := githubAuth.ExchangeCode(
-			c.Request.Context(),
-			code,
-		)
-		if err != nil {
-			c.JSON(500, gin.H{
-				"error": "failed to exchange authorization code",
-			})
-			return
-		}
-
-		// Retrieve the GitHub user information using the access token
-		user, err := githubAuth.GetUser(
-			c.Request.Context(),
-			token,
-		)
-		if err != nil {
-			c.JSON(500, gin.H{
-				"error": "failed to retrieve GitHub user",
-			})
-			return
-		}
-
-		// return the successful response with the user information
-		c.JSON(200, gin.H{
-			"message": "GitHub connected successfully",
-			"user":    user,
-		})
-	})
+	authorized.GET("/repositories", srv.listRepositoriesHandler)
+	authorized.POST("/repositories/:id/select", srv.selectRepositoryHandler)
+	authorized.DELETE("/repositories/:id/select", srv.deselectRepositoryHandler)
+	authorized.POST("/repositories/:id/sync", srv.syncFindingsHandler)
+	authorized.GET("/repositories/:id/findings", srv.listFindingsHandler)
+	authorized.GET("/repositories/:id/overview", srv.repositoryOverviewHandler)
+	authorized.POST("/findings/:id/analyze", srv.analyzeFindingHandler)
+	authorized.POST("/findings/:id/approve", srv.approveRemediationHandler)
+	authorized.POST("/findings/:id/decline", srv.declineRemediationHandler)
+	authorized.GET("/remediations", srv.listRemediationsHandler)
+	authorized.POST("/findings/:id/pr", srv.createPRHandler)
 
 	log.Println("Security Copilot API running on :8080")
-
 	if err := router.Run(":8080"); err != nil {
 		log.Fatal(err)
 	}

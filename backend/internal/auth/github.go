@@ -31,9 +31,17 @@ func NewGitHubAuth(cfg *config.Config) *GitHubAuth {
 				"read:user",
 				"user:email",
 				"repo",
+				"security_events",
 			},
 		},
 	}
+}
+
+// GitHubUser represents the GitHub user information returned from the API
+type GitHubUser struct {
+	ID    int64  `json:"id"`
+	Login string `json:"login"`
+	Email string `json:"email"`
 }
 
 // GenerateState generates a random state string for CSRF protection
@@ -73,7 +81,7 @@ func (g *GitHubAuth) ExchangeCode(ctx context.Context, code string) (*oauth2.Tok
 }
 
 // GetUser retrieves the GitHub user information using the access token
-func (g *GitHubAuth) GetUser(ctx context.Context, token *oauth2.Token) (map[string]any, error) {
+func (g *GitHubAuth) GetUser(ctx context.Context, token *oauth2.Token) (*GitHubUser, error) {
 	client := g.config.Client(ctx, token) // Create an HTTP client using the access token
 
 	// Make a request to the GitHub API to get user information
@@ -88,11 +96,11 @@ func (g *GitHubAuth) GetUser(ctx context.Context, token *oauth2.Token) (map[stri
 		return nil, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
 	}
 
-	var user map[string]any // Use map[string]any to hold the user data
+	var user GitHubUser // Use the GitHubUser struct to hold the user data
 
 	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
 		return nil, err
 	}
 
-	return user, nil
+	return &user, nil
 }

@@ -1,3 +1,6 @@
 DROP TABLE IF EXISTS repositories;
 DROP TABLE IF EXISTS github_connections;
 DROP TABLE IF EXISTS users;
+DROP FUNCTION IF EXISTS set_updated_at();
+DROP EXTENSION IF EXISTS pgcrypto;
+ALTER TABLE users DROP COLUMN tier;

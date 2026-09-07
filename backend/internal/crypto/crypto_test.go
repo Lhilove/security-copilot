@@ -79,3 +79,27 @@ func TestTamperedCiphertextFails(t *testing.T) {
 		t.Fatal("expected tampered ciphertext to fail decryption")
 	}
 }
+
+func TestWrongKeyFails(t *testing.T) {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatal(err)
+	}
+
+	plaintext := []byte("github-access-token-example")
+
+	ciphertext, err := Encrypt(key, plaintext)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wrongKey := make([]byte, 32)
+	if _, err := rand.Read(wrongKey); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = Decrypt(wrongKey, ciphertext)
+	if err == nil {
+		t.Fatal("expected decryption with wrong key to fail")
+	}
+}
