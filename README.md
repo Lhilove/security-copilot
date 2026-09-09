@@ -92,20 +92,31 @@ Active development. Phase 1, 2 complete.
 
 - [x] Remediation approval workflow
 - [x] Pull request generation
-- [ ] Security validation
+- [x] Security validation
 - [x] Audit logging
 
-### Phase 6 — Notifications
-
-- [ ] Slack, Discord, Telegram integration
-- [ ] Secure approval workflow tied to server-side verification
+#### Phase 6 — Notifications
+- [x] Email notifications (SMTP)
+- [x] Slack notifications (Block Kit buttons)
+- [x] Discord notifications (webhook embeds)
+- [x] Telegram notifications (inline keyboard)
+- [x] Signed approval tokens (JWT, 24h expiry)
+- [x] One-click approve/decline from any channel
 
 ### Phase 7 — Frontend
-
 - [x] React dashboard
 - [x] Repository security overview
 - [x] Finding details and business impact view
 - [x] Remediation review and approval interface
+- [x] Notification bell with unread count
+- [x] Notification settings page
+- [x] Enable Security & AI Scan button
+
+### Phase 8 — AI Direct Scan (new)
+- [x] Auto-enable CodeQL, Dependabot, Secret Scanning via GitHub API
+- [x] AI-powered direct codebase scan (DeepSeek via Ollama)
+- [x] Findings normalized and stored alongside GitHub findings
+- [x] AI scan source badge in UI
 
 ---
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 	_ "github.com/lhilove/security-copilot/docs"
 	"github.com/lhilove/security-copilot/internal/ai"
@@ -13,6 +14,7 @@ import (
 	"github.com/lhilove/security-copilot/internal/findings"
 	gh "github.com/lhilove/security-copilot/internal/github"
 	"github.com/lhilove/security-copilot/internal/repositories"
+	"github.com/lhilove/security-copilot/internal/securitysetup"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
@@ -63,6 +65,9 @@ func main() {
 	findingRepo := database.NewFindingRepository(db)
 	remediationRepo := database.NewRemediationRepository(db)
 
+	// AI provider selection
+	aiProvider := selectAIProvider(cfg)
+
 	// Services
 	srv := &Server{
 		cfg:            cfg,
@@ -72,13 +77,21 @@ func main() {
 		webhookSvc:     gh.NewWebhookHandler(repoRepo, findingRepo, findings.NormalizeSeverity),
 		repoRepo:       repoRepo,
 		findingRepo:    findingRepo,
-		aiProvider:     ai.NewNvidiaProvider(cfg.NvidiaAPIKey, cfg.NvidiaBaseURL, cfg.AIModel),
+		aiProvider:     aiProvider,
 		// aiProvider:      ai.NewMockProvider(),
 		remediationRepo: remediationRepo,
+		securitySetup:   securitysetup.NewService(aiProvider, findingRepo),
 	}
 
 	router := gin.Default()
 	router.SetTrustedProxies(nil)
+	// Serve React frontend from dist folder
+	router.Use(static.Serve("/", static.LocalFile("./frontend/dist", false)))
+
+	// Handle client-side routing - return index.html for unknown routes
+	router.NoRoute(func(c *gin.Context) {
+		c.File("./frontend/dist/index.html")
+	})
 
 	// Docs
 	router.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
@@ -88,6 +101,7 @@ func main() {
 	router.GET("/api/v1/auth/github", srv.githubLoginHandler)
 	router.GET("/api/v1/auth/github/callback", srv.githubCallbackHandler)
 	router.POST("/api/v1/webhooks/github", srv.webhookHandler)
+	router.GET("/api/v1/approve", srv.approvalCallbackHandler)
 
 	// Authenticated routes
 	authorized := router.Group("/api/v1")
@@ -104,9 +118,25 @@ func main() {
 	authorized.POST("/findings/:id/decline", srv.declineRemediationHandler)
 	authorized.GET("/remediations", srv.listRemediationsHandler)
 	authorized.POST("/findings/:id/pr", srv.createPRHandler)
+	authorized.POST("/repositories/:id/setup-security", srv.setupSecurityHandler)
+	authorized.GET("/notifications", srv.listNotificationsHandler)
+	authorized.POST("/notifications/:id/read", srv.markNotificationReadHandler)
+	authorized.GET("/notifications/settings", srv.getNotificationSettingsHandler)
+	authorized.POST("/notifications/settings", srv.saveNotificationSettingsHandler)
 
 	log.Println("Security Copilot API running on :8080")
 	if err := router.Run(":8080"); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func selectAIProvider(cfg *config.Config) ai.Provider {
+	switch cfg.AIProvider {
+	case "nvidia":
+		log.Println("AI provider: Nvidia NIM")
+		return ai.NewNvidiaProvider(cfg.NvidiaAPIKey, cfg.NvidiaBaseURL, cfg.AIModel)
+	default:
+		log.Println("AI provider: Ollama (deepseek-coder)")
+		return ai.NewOllamaProvider(cfg.OllamaBaseURL, cfg.AIModel)
 	}
 }

@@ -7,6 +7,7 @@ import DashboardPage from './pages/DashboardPage'
 import RepositoryPage from './pages/RepositoryPage'
 import FindingPage from './pages/FindingPage'
 import RemediationsPage from './pages/RemediationsPage'
+import SettingsPage from './pages/SettingsPage'
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth()
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/repositories/:id" element={<ProtectedRoute><RepositoryPage /></ProtectedRoute>} />
         <Route path="/findings/:id" element={<ProtectedRoute><FindingPage /></ProtectedRoute>} />
         <Route path="/remediations" element={<ProtectedRoute><RemediationsPage /></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>
   )

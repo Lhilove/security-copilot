@@ -1,10 +1,10 @@
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, RefreshCw, AlertTriangle, Shield } from 'lucide-react'
+import { ArrowLeft, RefreshCw, AlertTriangle, Shield, ShieldCheck, Bot } from 'lucide-react'
 import { api } from '../api'
 import type { Finding } from '../types'
+import NotificationBell from '../components/NotificationBell'
 
-// Severity badge component
 function SeverityBadge({ severity }: { severity: Finding['Severity'] }) {
   const colors: Record<string, string> = {
     critical: 'var(--critical)',
@@ -27,50 +27,108 @@ function SeverityBadge({ severity }: { severity: Finding['Severity'] }) {
   )
 }
 
-// Source label
 function SourceBadge({ source }: { source: Finding['Source'] }) {
-  const labels: Record<string, string> = {
-    code_scanning: 'CodeQL',
-    dependabot: 'Dependabot',
-    secret_scanning: 'Secret',
+  const config: Record<string, { label: string; color: string; bg: string; icon?: React.ReactNode }> = {
+    code_scanning: {
+      label: 'CodeQL',
+      color: 'var(--muted)',
+      bg: 'var(--surface-2)',
+    },
+    dependabot: {
+      label: 'Dependabot',
+      color: 'var(--muted)',
+      bg: 'var(--surface-2)',
+    },
+    secret_scanning: {
+      label: 'Secret',
+      color: 'var(--muted)',
+      bg: 'var(--surface-2)',
+    },
+    ai_scan: {
+      label: 'AI Scan',
+      color: '#a78bfa',
+      bg: 'rgba(167,139,250,0.1)',
+      icon: <Bot size={10} />,
+    },
   }
 
+  const c = config[source] ?? { label: source, color: 'var(--muted)', bg: 'var(--surface-2)' }
+
   return (
-    <span className="text-xs px-2 py-0.5 rounded" style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}>
-      {labels[source] ?? source}
+    <span
+      className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
+      style={{ color: c.color, background: c.bg, border: `1px solid ${c.color}33` }}
+    >
+      {c.icon}
+      {c.label}
     </span>
+  )
+}
+
+function ScanBanner() {
+  return (
+    <div
+      className="flex items-center gap-3 p-4 rounded-lg mb-6"
+      style={{
+        background: 'rgba(167,139,250,0.08)',
+        border: '1px solid rgba(167,139,250,0.2)',
+      }}
+    >
+      <Bot size={16} style={{ color: '#a78bfa', flexShrink: 0 }} />
+      <div>
+        <p className="text-sm font-medium" style={{ color: '#a78bfa' }}>
+          AI scan in progress
+        </p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+          DeepSeek is scanning your codebase. New findings will appear automatically.
+        </p>
+      </div>
+    </div>
   )
 }
 
 export default function RepositoryPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
-  // Fetch findings for this repository
   const { data: findings, isLoading, error } = useQuery({
     queryKey: ['findings', id],
     queryFn: () => api.getFindings(id!),
     enabled: !!id,
+    refetchInterval: 30000, // poll every 30s to pick up AI scan findings
   })
 
-  // Fetch overview for risk score
   const { data: overview } = useQuery({
     queryKey: ['overview', id],
     queryFn: () => api.getRepositoryOverview(id!),
     enabled: !!id,
+    refetchInterval: 30000,
   })
 
-  // Sync findings mutation
   const sync = useMutation({
     mutationFn: () => api.syncFindings(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['findings', id] })
+      queryClient.invalidateQueries({ queryKey: ['overview', id] })
+    },
   })
 
+  const setupSecurity = useMutation({
+    mutationFn: () => api.setupSecurity(id!),
+  })
+
+  const hasAIScanFindings = findings?.some(f => f.Source === 'ai_scan')
+  const aiScanRunning = setupSecurity.isPending
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--background)' }}>
 
       {/* Nav */}
-      <nav className="flex items-center justify-between px-8 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+      <nav
+        className="flex items-center justify-between px-8 py-4 border-b"
+        style={{ borderColor: 'var(--border)' }}
+      >
         <div className="flex items-center gap-3">
           <button onClick={() => navigate('/dashboard')} style={{ color: 'var(--muted)' }}>
             <ArrowLeft size={18} />
@@ -80,18 +138,49 @@ export default function RepositoryPage() {
             {overview?.repository ?? 'Repository'}
           </span>
         </div>
-        <button
-          onClick={() => sync.mutate()}
-          disabled={sync.isPending}
-          className="flex items-center gap-1.5 text-xs transition-all"
-          style={{ color: 'var(--muted)' }}
-        >
-          <RefreshCw size={12} className={sync.isPending ? 'animate-spin' : ''} />
-          {sync.isPending ? 'Syncing...' : 'Sync'}
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Enable Security button */}
+          <button
+            onClick={() => setupSecurity.mutate()}
+            disabled={setupSecurity.isPending || setupSecurity.isSuccess}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{
+              background: setupSecurity.isSuccess
+                ? 'rgba(22,163,74,0.1)'
+                : 'rgba(167,139,250,0.1)',
+              color: setupSecurity.isSuccess ? '#16a34a' : '#a78bfa',
+              border: `1px solid ${setupSecurity.isSuccess
+                ? 'rgba(22,163,74,0.2)'
+                : 'rgba(167,139,250,0.2)'}`,
+            }}
+          >
+            <ShieldCheck size={12} />
+            {setupSecurity.isPending
+              ? 'Starting scan...'
+              : setupSecurity.isSuccess
+              ? 'Scan started'
+              : 'Enable Security & Scan'}
+          </button>
+
+          {/* Sync button */}
+          <button
+            onClick={() => sync.mutate()}
+            disabled={sync.isPending}
+            className="flex items-center gap-1.5 text-xs transition-all"
+            style={{ color: 'var(--muted)' }}
+          >
+            <RefreshCw size={12} className={sync.isPending ? 'animate-spin' : ''} />
+            {sync.isPending ? 'Syncing...' : 'Sync'}
+          </button>
+
+          <NotificationBell />
+        </div>
       </nav>
 
       <main className="px-8 py-8 max-w-5xl mx-auto">
+
+        {/* AI scan in progress banner */}
+        {aiScanRunning && <ScanBanner />}
 
         {/* Risk overview */}
         {overview && (
@@ -117,6 +206,23 @@ export default function RepositoryPage() {
           </div>
         )}
 
+        {/* AI scan findings info bar */}
+        {hasAIScanFindings && (
+          <div
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg mb-4"
+            style={{
+              background: 'rgba(167,139,250,0.05)',
+              border: '1px solid rgba(167,139,250,0.15)',
+            }}
+          >
+            <Bot size={13} style={{ color: '#a78bfa' }} />
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+              Some findings were detected by AI direct scan, marked with the{' '}
+              <span style={{ color: '#a78bfa' }}>AI Scan</span> badge.
+            </p>
+          </div>
+        )}
+
         {/* Loading */}
         {isLoading && (
           <div className="flex items-center justify-center py-20">
@@ -126,7 +232,10 @@ export default function RepositoryPage() {
 
         {/* Error */}
         {error && (
-          <div className="p-4 rounded-lg mb-6" style={{ background: 'rgba(255,68,68,0.1)', border: '1px solid rgba(255,68,68,0.2)' }}>
+          <div
+            className="p-4 rounded-lg mb-6"
+            style={{ background: 'rgba(255,68,68,0.1)', border: '1px solid rgba(255,68,68,0.2)' }}
+          >
             <p className="text-sm" style={{ color: 'var(--critical)' }}>Failed to load findings.</p>
           </div>
         )}
@@ -180,8 +289,11 @@ export default function RepositoryPage() {
         {findings && findings.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20">
             <Shield size={32} className="mb-4" style={{ color: 'var(--muted)' }} />
-            <p className="text-sm" style={{ color: 'var(--muted)' }}>
-              No findings yet. Click Sync to fetch from GitHub.
+            <p className="text-sm mb-2" style={{ color: 'var(--muted)' }}>
+              No findings yet.
+            </p>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>
+              Click "Enable Security & Scan" to run an AI scan or sync from GitHub.
             </p>
           </div>
         )}

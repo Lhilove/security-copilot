@@ -20,7 +20,10 @@ type Config struct {
 	NvidiaAPIKey        string
 	NvidiaBaseURL       string
 	AIModel             string
+	AIProvider          string // "nvidia" or "ollama"
+	OllamaBaseURL       string // e.g. "http://localhost:11434"
 	FrontendURL         string
+	BaseURL             string
 }
 
 func Load() (*Config, error) {
@@ -51,6 +54,16 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("decode JWT_SECRET: %w", err)
 	}
 
+	aiProvider := os.Getenv("AI_PROVIDER")
+	if aiProvider == "" {
+		aiProvider = "ollama" // default to ollama in production
+	}
+
+	BaseURL := os.Getenv("BASE_URL")
+	if BaseURL == "" {
+		return nil, fmt.Errorf("BASE_URL is not configured")
+	}
+
 	cfg := &Config{
 		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
 		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
@@ -60,6 +73,8 @@ func Load() (*Config, error) {
 		NvidiaAPIKey:       os.Getenv("NVIDIA_API_KEY"),
 		NvidiaBaseURL:      os.Getenv("NVIDIA_BASE_URL"),
 		AIModel:            os.Getenv("AI_MODEL"),
+		AIProvider:         aiProvider,
+		OllamaBaseURL:      os.Getenv("OLLAMA_BASE_URL"),
 		EncryptionKey:      keyBytes,
 		JWTSecret:          jwtBytes,
 	}
@@ -89,7 +104,8 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("GITHUB_WEBHOOK_SECRET is not configured")
 	}
 
-	if cfg.NvidiaAPIKey == "" {
+	// Only require Nvidia key when using Nvidia provider
+	if cfg.AIProvider == "nvidia" && cfg.NvidiaAPIKey == "" {
 		return nil, fmt.Errorf("NVIDIA_API_KEY is not configured")
 	}
 

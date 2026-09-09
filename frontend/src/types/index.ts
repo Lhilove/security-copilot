@@ -12,7 +12,7 @@
 export interface Finding {
   ID: string
   RepositoryID: string
-  Source: 'code_scanning' | 'dependabot' | 'secret_scanning'
+  Source: 'code_scanning' | 'dependabot' | 'secret_scanning' | 'ai_scan'
   SourceAlertID: string
   Severity: 'critical' | 'high' | 'medium' | 'low'
   Title: string
@@ -67,4 +67,26 @@ export interface SecurityOverview {
       total: number
     }
   }
+}
+
+export interface Notification {
+  ID: string
+  UserID: string
+  FindingID: string
+  Title: string
+  Body: string
+  Read: boolean
+  CreatedAt: string
+}
+
+export interface NotificationSettings {
+  email: string
+  slack_webhook_url: string
+  discord_webhook_url: string
+  telegram_bot_token: string
+  telegram_chat_id: string
+  email_enabled: boolean
+  slack_enabled: boolean
+  discord_enabled: boolean
+  telegram_enabled: boolean
 }

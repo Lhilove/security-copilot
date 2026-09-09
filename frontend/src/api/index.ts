@@ -1,5 +1,5 @@
 import client from './client'
-import type { Repository, Finding, Remediation, AnalysisResult, SecurityOverview } from '../types'
+import type { Repository, Finding, Remediation, AnalysisResult, SecurityOverview, Notification, NotificationSettings } from '../types'
 
 export const api = {
   getRepositories: async (): Promise<Repository[]> => {
@@ -42,4 +42,25 @@ export const api = {
     const res = await client.get('/remediations')
     return res.data.remediations
   },
+
+  // Notifications
+getNotifications: async (): Promise<{ notifications: Notification[], unread_count: number }> => {
+  const res = await client.get('/notifications')
+  return res.data
+},
+markNotificationRead: async (id: string): Promise<void> => {
+  await client.post(`/notifications/${id}/read`)
+},
+getNotificationSettings: async (): Promise<NotificationSettings> => {
+  const res = await client.get('/notifications/settings')
+  return res.data
+},
+saveNotificationSettings: async (settings: NotificationSettings): Promise<void> => {
+  await client.post('/notifications/settings', settings)
+},
+setupSecurity: async (repoId: string): Promise<void> => {
+  await client.post(`/repositories/${repoId}/setup-security`)
+},
 }
+
+

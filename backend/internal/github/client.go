@@ -312,3 +312,209 @@ func (c *Client) CreatePullRequest(ctx context.Context, owner, repo, title, body
 
 	return &pr, nil
 }
+
+// EnableDependabot enables Dependabot alerts for a repository.
+func (c *Client) EnableDependabot(ctx context.Context, owner, repo string) error {
+	path := fmt.Sprintf("/repos/%s/%s/vulnerability-alerts", owner, repo)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, baseURL+path, nil)
+	if err != nil {
+		return fmt.Errorf("create dependabot request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("enable dependabot: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 204 = success, 403 = not allowed (org setting), both are acceptable
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusForbidden {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("enable dependabot returned status %d: %s", resp.StatusCode, string(b))
+	}
+
+	return nil
+}
+
+// EnableSecretScanning enables secret scanning for a repository.
+func (c *Client) EnableSecretScanning(ctx context.Context, owner, repo string) error {
+	path := fmt.Sprintf("/repos/%s/%s", owner, repo)
+
+	body := map[string]any{
+		"security_and_analysis": map[string]any{
+			"secret_scanning": map[string]string{
+				"status": "enabled",
+			},
+			"secret_scanning_push_protection": map[string]string{
+				"status": "enabled",
+			},
+		},
+	}
+
+	bodyBytes, _ := json.Marshal(body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, baseURL+path, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("create secret scanning request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("enable secret scanning: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusForbidden {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("enable secret scanning returned status %d: %s", resp.StatusCode, string(b))
+	}
+
+	return nil
+}
+
+// EnableCodeScanning creates a default CodeQL workflow in the repository.
+// This is the only way to enable CodeQL via API — GitHub has no direct toggle.
+func (c *Client) EnableCodeScanning(ctx context.Context, owner, repo, defaultBranch string) error {
+	path := fmt.Sprintf("/repos/%s/%s/contents/.github/workflows/codeql.yml", owner, repo)
+
+	workflow := fmt.Sprintf(`name: CodeQL Analysis
+on:
+  push:
+    branches: [ "%s" ]
+  pull_request:
+    branches: [ "%s" ]
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['javascript', 'python']
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+`, defaultBranch, defaultBranch)
+
+	encoded := base64.StdEncoding.EncodeToString([]byte(workflow))
+
+	// Check if file already exists to get its SHA
+	existingContent, existingSHA, err := c.GetFileContent(ctx, owner, repo, ".github/workflows/codeql.yml")
+	_ = existingContent
+
+	var bodyMap map[string]string
+	if err == nil && existingSHA != "" {
+		// File exists, update it
+		bodyMap = map[string]string{
+			"message": "chore: add CodeQL analysis workflow [Security Copilot]",
+			"content": encoded,
+			"sha":     existingSHA,
+			"branch":  defaultBranch,
+		}
+	} else {
+		// New file
+		bodyMap = map[string]string{
+			"message": "chore: add CodeQL analysis workflow [Security Copilot]",
+			"content": encoded,
+			"branch":  defaultBranch,
+		}
+	}
+
+	bodyBytes, _ := json.Marshal(bodyMap)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, baseURL+path, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("create codeql workflow request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("enable code scanning: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("enable code scanning returned status %d: %s", resp.StatusCode, string(b))
+	}
+
+	return nil
+}
+
+// ListRepoFiles returns all file paths in a repository up to maxFiles.
+// Used for AI direct scanning when CodeQL is not available.
+func (c *Client) ListRepoFiles(ctx context.Context, owner, repo, treeSHA string) ([]string, error) {
+	path := fmt.Sprintf("/repos/%s/%s/git/trees/%s?recursive=1", owner, repo, treeSHA)
+
+	resp, err := c.do(ctx, http.MethodGet, path)
+	if err != nil {
+		return nil, fmt.Errorf("fetch file tree: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("github api returned status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		Tree []struct {
+			Path string `json:"path"`
+			Type string `json:"type"`
+		} `json:"tree"`
+		Truncated bool `json:"truncated"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode file tree: %w", err)
+	}
+
+	// Only return files (blobs), not directories, and only scannable extensions
+	scannable := map[string]bool{
+		".go": true, ".js": true, ".ts": true, ".tsx": true, ".jsx": true,
+		".py": true, ".java": true, ".rb": true, ".php": true, ".cs": true,
+		".cpp": true, ".c": true, ".h": true, ".rs": true, ".swift": true,
+	}
+
+	var files []string
+	for _, item := range result.Tree {
+		if item.Type != "blob" {
+			continue
+		}
+		for ext := range scannable {
+			if strings.HasSuffix(item.Path, ext) {
+				files = append(files, item.Path)
+				break
+			}
+		}
+	}
+
+	return files, nil
+}
