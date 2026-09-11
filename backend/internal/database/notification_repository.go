@@ -11,7 +11,7 @@ import (
 type Notification struct {
 	ID        string
 	UserID    string
-	FindingID string
+	FindingID *string
 	Title     string
 	Body      string
 	Read      bool
@@ -28,9 +28,13 @@ func NewNotificationRepository(pool *pgxpool.Pool) *NotificationRepository {
 }
 
 func (r *NotificationRepository) Create(ctx context.Context, userID, findingID, title, body string) error {
+	var fid *string
+	if findingID != "" {
+		fid = &findingID
+	}
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO notifications (user_id, finding_id, title, body) VALUES ($1,$2,$3,$4)`,
-		userID, findingID, title, body,
+		userID, fid, title, body,
 	)
 	return err
 }

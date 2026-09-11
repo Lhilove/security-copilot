@@ -13,6 +13,7 @@ import (
 	"github.com/lhilove/security-copilot/internal/database"
 	"github.com/lhilove/security-copilot/internal/findings"
 	gh "github.com/lhilove/security-copilot/internal/github"
+	"github.com/lhilove/security-copilot/internal/notifications"
 	"github.com/lhilove/security-copilot/internal/repositories"
 	"github.com/lhilove/security-copilot/internal/securitysetup"
 	swaggerFiles "github.com/swaggo/files"
@@ -64,6 +65,9 @@ func main() {
 	repoRepo := database.NewRepositoryRepository(db)
 	findingRepo := database.NewFindingRepository(db)
 	remediationRepo := database.NewRemediationRepository(db)
+	notifRepo := database.NewNotificationRepository(db)
+	notifSettingsRepo := database.NewSettingsRepository(db)
+	notifDispatcher := notifications.NewDispatcher(notifSettingsRepo, notifRepo, cfg.JWTSecret, cfg.BaseURL)
 
 	// AI provider selection
 	aiProvider := selectAIProvider(cfg)
@@ -79,8 +83,11 @@ func main() {
 		findingRepo:    findingRepo,
 		aiProvider:     aiProvider,
 		// aiProvider:      ai.NewMockProvider(),
-		remediationRepo: remediationRepo,
-		securitySetup:   securitysetup.NewService(aiProvider, findingRepo),
+		remediationRepo:   remediationRepo,
+		securitySetup:     securitysetup.NewService(aiProvider, findingRepo),
+		notifRepo:         notifRepo,
+		notifSettingsRepo: notifSettingsRepo,
+		notifDispatcher:   notifDispatcher,
 	}
 
 	router := gin.Default()

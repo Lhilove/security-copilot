@@ -72,7 +72,7 @@ export interface SecurityOverview {
 export interface Notification {
   ID: string
   UserID: string
-  FindingID: string
+  FindingID: string | null
   Title: string
   Body: string
   Read: boolean
