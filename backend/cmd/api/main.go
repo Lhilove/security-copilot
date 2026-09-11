@@ -67,7 +67,14 @@ func main() {
 	remediationRepo := database.NewRemediationRepository(db)
 	notifRepo := database.NewNotificationRepository(db)
 	notifSettingsRepo := database.NewSettingsRepository(db)
-	notifDispatcher := notifications.NewDispatcher(notifSettingsRepo, notifRepo, cfg.JWTSecret, cfg.BaseURL)
+	notifDispatcher := notifications.NewDispatcher(
+		notifSettingsRepo,
+		notifRepo,
+		cfg.JWTSecret,
+		cfg.BaseURL,
+		cfg.SendByteAPIKey,
+		cfg.EmailFrom,
+	)
 
 	// AI provider selection
 	aiProvider := selectAIProvider(cfg)

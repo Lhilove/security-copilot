@@ -2,56 +2,67 @@ package notifications
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
-	"net/smtp"
-	"os"
-	"strings"
+	"net/http"
 )
 
-// EmailSender sends notification emails via SMTP.
 type EmailSender struct {
-	host     string
-	port     string
-	username string
-	password string
-	from     string
+	apiKey  string
+	from    string
+	baseURL string
 }
 
-func NewEmailSender() *EmailSender {
+func NewEmailSender(apiKey, from string) *EmailSender {
 	return &EmailSender{
-		host:     os.Getenv("SMTP_HOST"),
-		port:     os.Getenv("SMTP_PORT"),
-		username: os.Getenv("SMTP_USERNAME"),
-		password: os.Getenv("SMTP_PASSWORD"),
-		from:     os.Getenv("SMTP_FROM"),
+		apiKey:  apiKey,
+		from:    from,
+		baseURL: "https://api.sendbyte.africa",
 	}
 }
 
 func (e *EmailSender) Configured() bool {
-	return e.host != "" && e.username != "" && e.password != ""
+	return e.apiKey != ""
 }
 
 func (e *EmailSender) Send(to, subject, htmlBody string) error {
 	if !e.Configured() {
-		return fmt.Errorf("email not configured")
+		return fmt.Errorf("email not configured: missing SENDBYTE_API_KEY")
 	}
-	port := e.port
-	if port == "" {
-		port = "587"
+
+	payload := map[string]any{
+		"from":    e.from,
+		"to":      to,
+		"subject": subject,
+		"html":    htmlBody,
 	}
-	auth := smtp.PlainAuth("", e.username, e.password, e.host)
-	msg := strings.Join([]string{
-		"From: " + e.from,
-		"To: " + to,
-		"Subject: " + subject,
-		"MIME-Version: 1.0",
-		"Content-Type: text/html; charset=UTF-8",
-		"",
-		htmlBody,
-	}, "\r\n")
-	return smtp.SendMail(e.host+":"+port, auth, e.from, []string{to}, []byte(msg))
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal email payload: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, e.baseURL+"/emails", bytes.NewReader(b))
+	if err != nil {
+		return fmt.Errorf("create sendbyte request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+e.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("sendbyte request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("sendbyte returned status %d", resp.StatusCode)
+	}
+
+	return nil
 }
 
 var emailTemplate = template.Must(template.New("email").Parse(`

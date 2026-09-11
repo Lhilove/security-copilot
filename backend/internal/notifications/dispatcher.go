@@ -22,11 +22,13 @@ func NewDispatcher(
 	notifRepo *database.NotificationRepository,
 	jwtSecret []byte,
 	baseURL string,
+	sendByteAPIKey string,
+	emailFrom string,
 ) *Dispatcher {
 	return &Dispatcher{
 		settingsRepo: settingsRepo,
 		notifRepo:    notifRepo,
-		emailSender:  NewEmailSender(),
+		emailSender:  NewEmailSender(sendByteAPIKey, emailFrom),
 		jwtSecret:    jwtSecret,
 		baseURL:      baseURL,
 	}
