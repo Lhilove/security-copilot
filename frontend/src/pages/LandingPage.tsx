@@ -4,7 +4,7 @@ export default function LandingPage() {
 
   const handleConnectGitHub = () => {
     // Redirect to backend GitHub OAuth endpoint
-    window.location.href = 'http://localhost:8080/api/v1/auth/github'
+    window.location.href = '/api/v1/auth/github'
   }
 
   return (
