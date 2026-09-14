@@ -54,15 +54,18 @@ func (p *OllamaProvider) Analyze(ctx context.Context, req AnalysisRequest) (*Ana
 		return nil, fmt.Errorf("invalid analysis request: %w", err)
 	}
 
-	prompt := buildPrompt(req)
-
 	body := ollamaRequest{
-		Model:  p.model,
-		System: systemPrompt(), // reuses the same hardened system prompt as NvidiaProvider
-		Prompt: prompt,         // buildPrompt() wraps code in UNTRUSTED DATA labels
+		Model: p.model,
+		System: func() string {
+			if req.Description != "" {
+				return req.Description
+			}
+			return systemPrompt()
+		}(),
+		Prompt: buildPrompt(req),
 		Stream: false,
 		Options: ollamaOptions{
-			Temperature: 0.1, // low temperature for consistent, precise security analysis
+			Temperature: 0.1,
 			NumPredict:  1024,
 		},
 	}
