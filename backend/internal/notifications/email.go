@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -10,16 +11,14 @@ import (
 )
 
 type EmailSender struct {
-	apiKey  string
-	from    string
-	baseURL string
+	apiKey string
+	from   string
 }
 
 func NewEmailSender(apiKey, from string) *EmailSender {
 	return &EmailSender{
-		apiKey:  apiKey,
-		from:    from,
-		baseURL: "https://api.sendbyte.africa",
+		apiKey: apiKey,
+		from:   from,
 	}
 }
 
@@ -34,7 +33,7 @@ func (e *EmailSender) Send(to, subject, htmlBody string) error {
 
 	payload := map[string]any{
 		"from":    e.from,
-		"to":      to,
+		"to":      []string{to},
 		"subject": subject,
 		"html":    htmlBody,
 	}
@@ -44,7 +43,8 @@ func (e *EmailSender) Send(to, subject, htmlBody string) error {
 		return fmt.Errorf("marshal email payload: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, e.baseURL+"/emails", bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
+		"https://api.sendbyte.africa/v1/emails", bytes.NewReader(b))
 	if err != nil {
 		return fmt.Errorf("create sendbyte request: %w", err)
 	}
