@@ -574,8 +574,8 @@ func (s *Server) createPRHandler(c *gin.Context) {
 		return
 	}
 
-	if !remediation.CanAutoFix || remediation.ProposedCode == "" {
-		c.JSON(400, gin.H{"error": "this finding does not have an auto-fixable proposed code change"})
+	if remediation.ProposedCode == "" {
+		c.JSON(400, gin.H{"error": "this finding has no proposed code change"})
 		return
 	}
 

@@ -118,10 +118,11 @@ Respond ONLY in this exact JSON format, nothing else:
   "what": "one sentence: what the vulnerability is",
   "risk": "one sentence: business impact if exploited",
   "fix": "one sentence: how to fix it",
-  "proposed_code": "the fixed code snippet, or empty string if not applicable",
-  "can_auto_fix": true or false
+  "proposed_code": "the fixed code snippet replacing the vulnerable code, or empty string if not applicable",
+  "can_auto_fix": true
 }
 
+Set can_auto_fix to true whenever you provide a proposed_code snippet.
 Be brief. Developers will skim this in 10 seconds. No epistles.`
 }
 
@@ -169,6 +170,13 @@ func parseResponse(content string) *AnalysisResult {
 	content = strings.TrimPrefix(content, "```")
 	content = strings.TrimSuffix(content, "```")
 	content = strings.TrimSpace(content)
+
+	// Extract just the JSON object — find first { and last }
+	start := strings.Index(content, "{")
+	end := strings.LastIndex(content, "}")
+	if start != -1 && end != -1 && end > start {
+		content = content[start : end+1]
+	}
 
 	var parsed struct {
 		What         string `json:"what"`

@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -15,7 +16,7 @@ type Notification struct {
 	Title     string
 	Body      string
 	Read      bool
-	CreatedAt string
+	CreatedAt time.Time
 }
 
 // NotificationRepository handles in-app notification persistence.
