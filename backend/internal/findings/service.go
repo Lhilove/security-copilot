@@ -77,16 +77,21 @@ func (s *Service) SyncRepository(ctx context.Context, userID, repoID string) (in
 		fmt.Printf("dependabot unavailable for %s: %v\n", repo.FullName, err)
 	} else {
 		for _, a := range depAlerts {
+			var patchedVersion string
+			if a.SecurityVulnerability.FirstPatchedVersion != nil {
+				patchedVersion = a.SecurityVulnerability.FirstPatchedVersion.Identifier
+			}
 			findings = append(findings, database.Finding{
-				RepositoryID:  repoID,
-				Source:        "dependabot",
-				SourceAlertID: fmt.Sprintf("%d", a.Number),
-				Severity:      NormalizeSeverity(a.SecurityVulnerability.Severity),
-				Title:         a.SecurityAdvisory.Summary,
-				Description:   a.SecurityAdvisory.Description,
-				State:         a.State,
-				PackageName:   a.SecurityVulnerability.Package.Name,
-				CVEID:         a.SecurityAdvisory.CVEId,
+				RepositoryID:   repoID,
+				Source:         "dependabot",
+				SourceAlertID:  fmt.Sprintf("%d", a.Number),
+				Severity:       NormalizeSeverity(a.SecurityVulnerability.Severity),
+				Title:          a.SecurityAdvisory.Summary,
+				Description:    a.SecurityAdvisory.Description,
+				State:          a.State,
+				PackageName:    a.SecurityVulnerability.Package.Name,
+				CVEID:          a.SecurityAdvisory.CVEId,
+				PatchedVersion: patchedVersion,
 			})
 			rawData = append(rawData, a.RawData)
 		}

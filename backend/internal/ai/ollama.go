@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 )
@@ -33,7 +34,6 @@ func NewOllamaProvider(baseURL, model string) *OllamaProvider {
 type ollamaRequest struct {
 	Model   string        `json:"model"`
 	Prompt  string        `json:"prompt"`
-	System  string        `json:"system"`
 	Stream  bool          `json:"stream"`
 	Options ollamaOptions `json:"options"`
 }
@@ -48,25 +48,38 @@ type ollamaResponse struct {
 }
 
 func (p *OllamaProvider) Analyze(ctx context.Context, req AnalysisRequest) (*AnalysisResult, error) {
-	// Validate request source to resist prompt injection at the Go level
-	// before anything reaches the model
 	if err := validateRequest(req); err != nil {
 		return nil, fmt.Errorf("invalid analysis request: %w", err)
 	}
 
+	// Build a conversational prompt that deepseek-coder responds to correctly
+	fullPrompt := fmt.Sprintf(`%s
+
+	### Security Finding to Analyze:
+	Source: %s
+	Severity: %s
+	Title: %s
+	Package: %s
+	CVE: %s
+	Description: %s
+
+	### Your JSON Response:`,
+		systemPrompt(),
+		req.Source,
+		req.Severity,
+		req.Title,
+		req.PackageName,
+		req.CVEID,
+		req.Description,
+	)
+
 	body := ollamaRequest{
-		Model: p.model,
-		System: func() string {
-			if req.Description != "" {
-				return req.Description
-			}
-			return systemPrompt()
-		}(),
-		Prompt: buildPrompt(req),
+		Model:  p.model,
+		Prompt: fullPrompt,
 		Stream: false,
 		Options: ollamaOptions{
 			Temperature: 0.1,
-			NumPredict:  1024,
+			NumPredict:  512,
 		},
 	}
 
@@ -103,5 +116,6 @@ func (p *OllamaProvider) Analyze(ctx context.Context, req AnalysisRequest) (*Ana
 		return nil, fmt.Errorf("empty response from ollama")
 	}
 
+	log.Printf("ollama raw response: %s", ollamaResp.Response)
 	return parseResponse(ollamaResp.Response), nil
 }

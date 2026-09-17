@@ -17,19 +17,20 @@ func NewFindingRepository(pool *pgxpool.Pool) *FindingRepository {
 }
 
 type Finding struct {
-	ID            string
-	RepositoryID  string
-	Source        string
-	SourceAlertID string
-	Severity      string
-	Title         string
-	Description   string
-	State         string
-	FilePath      string
-	LineNumber    *int
-	PackageName   string
-	CVEID         string
-	SecretType    string
+	ID             string
+	RepositoryID   string
+	Source         string
+	SourceAlertID  string
+	Severity       string
+	Title          string
+	Description    string
+	State          string
+	FilePath       string
+	LineNumber     *int
+	PackageName    string
+	CVEID          string
+	SecretType     string
+	PatchedVersion string
 }
 
 type FindingSummary struct {
@@ -47,9 +48,9 @@ func (r *FindingRepository) UpsertFindings(ctx context.Context, findings []Findi
 		INSERT INTO findings (
 			repository_id, source, source_alert_id, severity, title,
 			description, state, file_path, line_number, package_name,
-			cve_id, secret_type, raw_data
+			cve_id, secret_type, raw_data, patched_version
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		ON CONFLICT (repository_id, source, source_alert_id)
 		DO UPDATE SET
 			severity      = EXCLUDED.severity,
@@ -62,6 +63,7 @@ func (r *FindingRepository) UpsertFindings(ctx context.Context, findings []Findi
 			cve_id        = EXCLUDED.cve_id,
 			secret_type   = EXCLUDED.secret_type,
 			raw_data      = EXCLUDED.raw_data,
+			patched_version = EXCLUDED.patched_version,
 			updated_at    = NOW()
 	`
 
@@ -85,6 +87,7 @@ func (r *FindingRepository) UpsertFindings(ctx context.Context, findings []Findi
 			f.CVEID,
 			f.SecretType,
 			raw,
+			f.PatchedVersion,
 		)
 		if err != nil {
 			return fmt.Errorf("upsert finding %s/%s: %w", f.Source, f.SourceAlertID, err)
@@ -99,7 +102,7 @@ func (r *FindingRepository) GetFindingsByRepositoryID(ctx context.Context, repos
 	query := `
 		SELECT id, repository_id, source, source_alert_id, severity,
 			title, description, state, file_path, line_number,
-			package_name, cve_id, secret_type
+			package_name, cve_id, secret_type, patched_version
 		FROM findings
 		WHERE repository_id = $1
 		ORDER BY
@@ -136,6 +139,7 @@ func (r *FindingRepository) GetFindingsByRepositoryID(ctx context.Context, repos
 			&f.PackageName,
 			&f.CVEID,
 			&f.SecretType,
+			&f.PatchedVersion,
 		); err != nil {
 			return nil, fmt.Errorf("scan finding: %w", err)
 		}
