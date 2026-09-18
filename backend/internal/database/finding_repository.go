@@ -178,11 +178,15 @@ func (r *FindingRepository) GetFindingSummary(ctx context.Context, repositoryID 
 	return s, nil
 }
 
+// Add PatchedVersion to GetFindingByID query and scan
+// Replace the existing GetFindingByID function with this one
+
 func (r *FindingRepository) GetFindingByID(ctx context.Context, userID, findingID string) (*Finding, error) {
 	query := `
 		SELECT f.id, f.repository_id, f.source, f.source_alert_id,
 			f.severity, f.title, f.description, f.state,
-			f.file_path, f.line_number, f.package_name, f.cve_id, f.secret_type
+			f.file_path, f.line_number, f.package_name, f.cve_id, f.secret_type,
+			f.patched_version
 		FROM findings f
 		JOIN repositories r ON r.id = f.repository_id
 		WHERE f.id = $1
@@ -204,6 +208,7 @@ func (r *FindingRepository) GetFindingByID(ctx context.Context, userID, findingI
 		&f.PackageName,
 		&f.CVEID,
 		&f.SecretType,
+		&f.PatchedVersion,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get finding: %w", err)
