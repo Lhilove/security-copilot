@@ -77,9 +77,10 @@ func (s *Service) SyncRepository(ctx context.Context, userID, repoID string) (in
 		fmt.Printf("dependabot unavailable for %s: %v\n", repo.FullName, err)
 	} else {
 		for _, a := range depAlerts {
-			var patchedVersion string
+			var patchedVersion *string
 			if a.SecurityVulnerability.FirstPatchedVersion != nil {
-				patchedVersion = a.SecurityVulnerability.FirstPatchedVersion.Identifier
+				v := a.SecurityVulnerability.FirstPatchedVersion.Identifier
+				patchedVersion = &v
 			}
 			findings = append(findings, database.Finding{
 				RepositoryID:   repoID,

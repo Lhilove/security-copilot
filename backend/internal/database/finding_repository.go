@@ -30,7 +30,7 @@ type Finding struct {
 	PackageName    string
 	CVEID          string
 	SecretType     string
-	PatchedVersion string
+	PatchedVersion *string
 }
 
 type FindingSummary struct {
