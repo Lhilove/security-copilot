@@ -12,6 +12,7 @@ export default function FindingPage() {
 
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null)
   const [prUrl, setPrUrl] = useState<string | null>(null)
+  const [reviewed, setReviewed] = useState(false)
 
   const analyze = useMutation({
     mutationFn: () => api.analyzeFinding(id!),
@@ -25,7 +26,14 @@ export default function FindingPage() {
 
   const approve = useMutation({
     mutationFn: () => api.approveFinding(id!),
-    onSuccess: () => setTimeout(() => createPR.mutate(), 500),
+    onSuccess: (result) => {
+      // Backend now tells us whether a PR can be created
+      if (result.can_auto_fix) {
+        setTimeout(() => createPR.mutate(), 500)
+      } else {
+        setReviewed(true)
+      }
+    },
   })
 
   const decline = useMutation({
@@ -34,6 +42,8 @@ export default function FindingPage() {
   })
 
   const isApproving = approve.isPending || createPR.isPending
+
+  // canAutoFix from analysis state — used to show correct button before approving
   const canAutoFix = !!(analysis?.proposed_code && analysis.proposed_code.trim() !== '')
 
   return (
@@ -60,6 +70,17 @@ export default function FindingPage() {
               <a href={prUrl} target="_blank" rel="noopener noreferrer" className="text-xs underline" style={{ color: 'var(--safe)' }}>
                 {prUrl}
               </a>
+            </div>
+          </div>
+        )}
+
+        {/* Reviewed success banner — shown when no auto fix available */}
+        {reviewed && !prUrl && (
+          <div className="p-5 rounded-lg mb-6 flex items-start gap-3" style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)' }}>
+            <CheckCircle size={18} style={{ color: 'var(--safe)', flexShrink: 0, marginTop: 1 }} />
+            <div>
+              <p className="text-sm font-medium" style={{ color: 'var(--safe)' }}>Marked as reviewed</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>Apply the fix manually using the guidance above.</p>
             </div>
           </div>
         )}
@@ -96,7 +117,6 @@ export default function FindingPage() {
         {analysis && (
           <div className="space-y-4">
 
-            {/* What / Risk / Fix */}
             {[
               { label: 'What', value: analysis.what },
               { label: 'Risk', value: analysis.risk },
@@ -108,7 +128,7 @@ export default function FindingPage() {
               </div>
             ))}
 
-            {/* Proposed code block — only shown when AI returned one */}
+            {/* Proposed code — only when AI returned one */}
             {canAutoFix && (
               <div className="p-5 rounded-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                 <p className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: 'var(--muted)' }}>Proposed fix</p>
@@ -118,7 +138,7 @@ export default function FindingPage() {
               </div>
             )}
 
-            {/* Manual fix notice — shown when AI couldn't generate a code patch */}
+            {/* Manual fix notice */}
             {!canAutoFix && (
               <div className="p-4 rounded-lg flex items-start gap-3" style={{ background: 'rgba(255,200,0,0.08)', border: '1px solid rgba(255,200,0,0.2)' }}>
                 <AlertTriangle size={15} style={{ color: '#f59e0b', flexShrink: 0, marginTop: 1 }} />
@@ -138,8 +158,8 @@ export default function FindingPage() {
               </div>
             )}
 
-            {/* Action buttons */}
-            {!prUrl && (
+            {/* Action buttons — hidden once reviewed or PR created */}
+            {!prUrl && !reviewed && (
               <div className="flex gap-3 pt-2">
                 {canAutoFix ? (
                   <button

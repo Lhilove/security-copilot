@@ -90,3 +90,11 @@ export interface NotificationSettings {
   discord_enabled: boolean
   telegram_enabled: boolean
 }
+
+export interface ApproveResult {
+  remediation_id: string
+  finding_id: string
+  status: string
+  can_auto_fix: boolean
+  message: string
+}

@@ -467,11 +467,22 @@ func (s *Server) approveRemediationHandler(c *gin.Context) {
 		return
 	}
 
+	// Tell the frontend whether a PR can be created automatically
+	// so it can decide whether to call /pr or just show "marked as reviewed"
+	canAutoFix := remediation.ProposedCode != ""
+
+	// Also check if this is a dependabot finding with a patched version
+	finding, err := s.findingRepo.GetFindingByID(c.Request.Context(), userID, findingID)
+	if err == nil && finding.Source == "dependabot" && finding.PatchedVersion != nil && *finding.PatchedVersion != "" {
+		canAutoFix = true
+	}
+
 	c.JSON(200, gin.H{
 		"remediation_id": remediation.ID,
 		"finding_id":     findingID,
 		"status":         remediation.Status,
-		"message":        "remediation approved, PR creation coming soon",
+		"can_auto_fix":   canAutoFix,
+		"message":        "remediation approved",
 	})
 }
 

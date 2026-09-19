@@ -1,5 +1,5 @@
 import client from './client'
-import type { Repository, Finding, Remediation, AnalysisResult, SecurityOverview, Notification, NotificationSettings } from '../types'
+import type { Repository, Finding, Remediation, AnalysisResult, SecurityOverview, Notification, NotificationSettings, ApproveResult } from '../types'
 
 export const api = {
   getRepositories: async (): Promise<Repository[]> => {
@@ -28,8 +28,9 @@ export const api = {
     const res = await client.post(`/findings/${id}/analyze`)
     return res.data
   },
-  approveFinding: async (id: string): Promise<void> => {
-    await client.post(`/findings/${id}/approve`)
+  approveFinding: async (id: string): Promise<ApproveResult> => {
+    const res = await client.post(`/findings/${id}/approve`)
+    return res.data
   },
   declineFinding: async (id: string): Promise<void> => {
     await client.post(`/findings/${id}/decline`)
