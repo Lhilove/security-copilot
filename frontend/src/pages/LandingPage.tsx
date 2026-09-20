@@ -111,7 +111,7 @@ export default function LandingPage() {
           <a href="https://linkedin.com/in/adewole-oluwapelumi" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>
             Adewole Oluwapelumi
           </a>
-          {' · MIT License'} <a href="/privacy.html" style={{ color: 'var(--muted)', fontSize: 13 }}>Privacy Policy</a>
+          {' · MIT License '} <a href="/privacy.html" style={{ color: 'var(--muted)', fontSize: 13 }}>Privacy Policy</a>
         </p>
       </footer>
 
