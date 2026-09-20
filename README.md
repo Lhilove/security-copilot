@@ -2,7 +2,7 @@
 
 AI-powered security remediation for GitHub repositories. Connects to your repos, explains vulnerabilities in plain English, and opens pull requests with the fix. You just review and approve.
 
-Live at [securitycopilot.com.ng](https://securitycopilot.com.ng) — or self-host in minutes with Docker.
+Live at [securitycopilot.com.ng](https://securitycopilot.com.ng) - or self-host in minutes with Docker.
 
 ---
 
@@ -10,7 +10,7 @@ Live at [securitycopilot.com.ng](https://securitycopilot.com.ng) — or self-hos
 
 Most security tools tell you something is broken. Security Copilot tells you why it matters and fixes it.
 
-Connect a GitHub repository. Security Copilot pulls in findings from CodeQL, Dependabot, and Secret Scanning. For each finding, the AI explains the business impact in plain English, proposes a fix, and — with your approval — opens a pull request. For Dependabot alerts, it bumps the vulnerable dependency to the patched version automatically.
+Connect a GitHub repository. Security Copilot pulls in findings from CodeQL, Dependabot, and Secret Scanning. For each finding, the AI explains the business impact in plain English, proposes a fix, and - with your approval - opens a pull request. For Dependabot alerts, it bumps the vulnerable dependency to the patched version automatically.
 
 If CodeQL and Dependabot are not enabled on a repository, Security Copilot enables them automatically and runs its own AI-powered scan of the codebase immediately, so you get findings right away rather than waiting for the next CI run.
 
@@ -41,7 +41,7 @@ Fix ships
 
 ## Features
 
-- GitHub OAuth — connect repositories with one click
+- GitHub OAuth - connect repositories with one click
 - Aggregates CodeQL, Dependabot, and Secret Scanning findings
 - Auto-enables security features on connected repositories
 - AI direct scan of the codebase using DeepSeek Coder via Ollama
@@ -49,7 +49,7 @@ Fix ships
 - Proposed code fix with one-click pull request creation
 - Automatic dependency version bumping for Dependabot alerts
 - Notification channels: email (SendByte), Slack, Discord, Telegram
-- Signed approval tokens — approve or decline fixes directly from any notification
+- Signed approval tokens - approve or decline fixes directly from any notification
 - Risk scoring per repository
 - AES-256-GCM encryption for all stored GitHub tokens
 
@@ -163,7 +163,7 @@ Security controls are applied to the product itself, not only the code it analyz
 - Prompt injection defenses are applied at the Go layer before any content reaches the AI model
 - Code snippets sent for AI analysis are labeled as untrusted data in the system prompt
 - Encryption keys are never committed to version control
-- All AI analysis is sandboxed — the model cannot execute code or make network requests
+- All AI analysis is sandboxed - the model cannot execute code or make network requests
 
 ---
 
@@ -234,4 +234,4 @@ Security Copilot does not send your code to any external AI service. The AI mode
 
 ## License
 
-MIT — [github.com/Lhilove/security-copilot](https://github.com/Lhilove/security-copilot)
+MIT - [github.com/Lhilove/security-copilot](https://github.com/Lhilove/security-copilot)
