@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Security Copilot</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0a;
+      --surface: #111111;
+      --border: #1f1f1f;
+      --text: #f5f5f5;
+      --muted: #6b7280;
+      --accent: #ffffff;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 16px;
+      line-height: 1.7;
+      padding: 0;
+    }
+
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 48px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .logo-icon {
+      width: 28px;
+      height: 28px;
+    }
+
+    nav a.back {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.15s;
+    }
+
+    nav a.back:hover { color: var(--text); }
+
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 64px 24px 120px;
+    }
+
+    .header {
+      margin-bottom: 48px;
+      padding-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-size: 36px;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .last-updated {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .intro {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 28px;
+      margin-bottom: 48px;
+      font-size: 15px;
+      color: var(--text);
+      line-height: 1.7;
+    }
+
+    .intro strong {
+      color: var(--accent);
+    }
+
+    section {
+      margin-bottom: 48px;
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    p {
+      color: #d1d5db;
+      margin-bottom: 16px;
+      font-size: 15px;
+    }
+
+    ul {
+      list-style: none;
+      margin-bottom: 16px;
+    }
+
+    ul li {
+      color: #d1d5db;
+      font-size: 15px;
+      padding: 6px 0 6px 20px;
+      position: relative;
+    }
+
+    ul li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 15px;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+
+    .highlight-box {
+      background: rgba(34, 197, 94, 0.05);
+      border: 1px solid rgba(34, 197, 94, 0.15);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin: 20px 0;
+    }
+
+    .highlight-box p {
+      color: #86efac;
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .highlight-box strong {
+      color: #22c55e;
+    }
+
+    .warning-box {
+      background: rgba(239, 68, 68, 0.05);
+      border: 1px solid rgba(239, 68, 68, 0.15);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin: 20px 0;
+    }
+
+    .warning-box p {
+      color: #fca5a5;
+      margin: 0;
+      font-size: 14px;
+    }
+
+    a {
+      color: var(--text);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    a:hover { color: var(--muted); }
+
+    .contact-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      margin-top: 16px;
+    }
+
+    .contact-card p {
+      margin: 0 0 8px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .contact-card a {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    footer p {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 0;
+    }
+
+    footer a {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 640px) {
+      nav { padding: 16px 20px; }
+      main { padding: 40px 20px 80px; }
+      h1 { font-size: 28px; }
+      footer { padding: 24px 20px; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="/" class="logo">
+      <svg class="logo-icon" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M14 2L4 7V14C4 19.5 8.5 24.7 14 26C19.5 24.7 24 19.5 24 14V7L14 2Z" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+      </svg>
+      Security Copilot
+    </a>
+    <a href="/" class="back">Back to app</a>
+  </nav>
+
+  <main>
+    <div class="header">
+      <div class="badge">Legal</div>
+      <h1>Privacy Policy</h1>
+      <p class="last-updated">Last updated: September 19, 2026</p>
+    </div>
+
+    <div class="intro">
+      <strong>The short version:</strong> Security Copilot connects to your GitHub account to help you find and fix security vulnerabilities. We only access what you explicitly give us permission to access, we do not sell your data, and our AI runs on our own server — your code is never sent to OpenAI or any third-party AI provider.
+    </div>
+
+    <section>
+      <h2>Who we are</h2>
+      <p>Security Copilot is an open-source tool built and maintained by Adewole Oluwapelumi. The hosted version runs at <a href="https://securitycopilot.com.ng">securitycopilot.com.ng</a>. You can also self-host the entire stack using the instructions in the <a href="https://github.com/Lhilove/security-copilot" target="_blank" rel="noopener">GitHub repository</a>.</p>
+      <p>For privacy questions, contact us at <a href="mailto:hello@securitycopilot.com.ng">hello@securitycopilot.com.ng</a>.</p>
+    </section>
+
+    <section>
+      <h2>What we collect and why</h2>
+
+      <p><strong>GitHub account information</strong></p>
+      <p>When you sign in with GitHub, we receive your GitHub username, display name, and email address. This is used to identify your account and send you notifications about security findings.</p>
+
+      <p><strong>Repository information</strong></p>
+      <p>We fetch the list of repositories your GitHub account has access to so you can choose which ones to monitor. We only actively monitor repositories you explicitly select.</p>
+
+      <p><strong>Security findings</strong></p>
+      <p>For repositories you choose to monitor, we pull security alerts from GitHub's own security features: CodeQL code scanning alerts, Dependabot vulnerability alerts, and Secret Scanning alerts. This data comes directly from GitHub's API and is stored in our database to power the dashboard.</p>
+
+      <p><strong>AI analysis results</strong></p>
+      <p>When you request an AI analysis of a finding, we send the finding's metadata (title, severity, description, affected file and line number) to our AI model. The result — a plain-English explanation of the vulnerability and a proposed fix — is stored and shown on your dashboard.</p>
+    </section>
+
+    <section>
+      <h2>How the AI works</h2>
+
+      <div class="highlight-box">
+        <p><strong>Your code stays on your infrastructure.</strong> The AI model (DeepSeek Coder, running via Ollama) runs on our own server in Oracle Cloud. When you analyze a finding, we send the finding metadata and the relevant code snippet to our server. Nothing is sent to OpenAI, Anthropic, or any external AI API.</p>
+      </div>
+
+      <p>The code snippet sent for analysis is the specific fragment identified in the security alert, not your entire repository. We do not store code snippets after the analysis is complete — only the AI's output (what the vulnerability is, why it matters, and how to fix it).</p>
+    </section>
+
+    <section>
+      <h2>What we do not do</h2>
+      <ul>
+        <li>We do not sell your data to anyone, ever.</li>
+        <li>We do not share your repositories, findings, or analysis results with third parties.</li>
+        <li>We do not store your source code — only security alert metadata and AI analysis results.</li>
+        <li>We do not use your data to train AI models.</li>
+        <li>We do not access repositories you have not explicitly selected for monitoring.</li>
+        <li>We do not retain data after you delete your account.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>GitHub OAuth access</h2>
+      <p>When you connect your GitHub account, you grant Security Copilot the following permissions:</p>
+      <ul>
+        <li>Read access to your profile (username, email)</li>
+        <li>Read access to your repositories</li>
+        <li>Read access to security alerts (CodeQL, Dependabot, Secret Scanning)</li>
+        <li>Write access to create pull requests with proposed fixes</li>
+        <li>Write access to create workflow files (for enabling CodeQL)</li>
+      </ul>
+      <p>You can revoke this access at any time from your <a href="https://github.com/settings/applications" target="_blank" rel="noopener">GitHub account settings</a> under Authorized OAuth Apps.</p>
+    </section>
+
+    <section>
+      <h2>Data storage and security</h2>
+      <p>Your data is stored in a PostgreSQL database hosted on Oracle Cloud (South Africa Central region). GitHub access tokens are encrypted at rest using AES-256-GCM before being stored. Session tokens use signed JWTs with a 24-hour expiry.</p>
+
+      <div class="warning-box">
+        <p>Security Copilot is a personal project and is provided as-is. If you have particularly sensitive repositories, we recommend <strong>self-hosting</strong> the application on your own infrastructure. Full setup instructions are available in the <a href="https://github.com/Lhilove/security-copilot" target="_blank" rel="noopener" style="color: #fca5a5;">README</a>.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Data retention</h2>
+      <p>We retain your data for as long as you have an active account. If you stop using Security Copilot, your data remains stored unless you request deletion. To delete your account and all associated data, email <a href="mailto:hello@securitycopilot.com.ng">hello@securitycopilot.com.ng</a> and we will process your request within 7 days.</p>
+    </section>
+
+    <section>
+      <h2>Self-hosting</h2>
+      <p>Security Copilot is fully open source under the MIT License. If you prefer complete control over your data, you can run the entire stack on your own infrastructure. The source code, including setup instructions, is available at <a href="https://github.com/Lhilove/security-copilot" target="_blank" rel="noopener">github.com/Lhilove/security-copilot</a>.</p>
+      <p>When self-hosting, no data is sent to our servers. You are responsible for the security of your own deployment.</p>
+    </section>
+
+    <section>
+      <h2>Changes to this policy</h2>
+      <p>We may update this policy as the project evolves. When we make significant changes, we will update the date at the top of this page. Continued use of Security Copilot after changes constitutes acceptance of the updated policy.</p>
+    </section>
+
+    <section>
+      <h2>Contact</h2>
+      <p>If you have questions about this privacy policy or how your data is handled, get in touch.</p>
+      <div class="contact-card">
+        <p>Email us at</p>
+        <a href="mailto:hello@securitycopilot.com.ng">hello@securitycopilot.com.ng</a>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>Security Copilot &mdash; MIT Licensed &mdash; <a href="https://github.com/Lhilove/security-copilot" target="_blank" rel="noopener">View source on GitHub</a></p>
+    <p><a href="/">Back to app</a></p>
+  </footer>
+
+</body>
+</html>

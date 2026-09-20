@@ -252,6 +252,14 @@ export default function SettingsPage() {
 
           </div>
         )}
+          <div className="pt-8" style={{ borderTop: '1px solid var(--border)', marginTop: 32 }}>
+          
+           <a href="/privacy.html"
+            style={{ color: 'var(--muted)', fontSize: 13, textDecoration: 'underline', textUnderlineOffset: 3 }}
+          >
+            Privacy Policy
+          </a>
+        </div>
       </main>
     </div>
   )

@@ -2,15 +2,67 @@ services:
   postgres:
     image: postgres:16
     container_name: security-copilot-postgres
-    restart: unless-stopped
     environment:
-      POSTGRES_DB: security_copilot
       POSTGRES_USER: security_copilot
       POSTGRES_PASSWORD: security_copilot_dev
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: security_copilot
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U security_copilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: security-copilot-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: security-copilot-ollama-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["/bin/sh", "-c", "ollama pull deepseek-coder:6.7b && echo 'Model ready'"]
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: security-copilot-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgres://security_copilot:security_copilot_dev@postgres:5432/security_copilot?sslmode=disable
+      OLLAMA_BASE_URL: http://ollama:11434
+      MIGRATIONS_PATH: /app/migrations
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+  ollama_data:

@@ -1,142 +1,154 @@
 # Security Copilot
 
-AI-powered application security remediation for GitHub repositories.
+AI-powered security remediation for GitHub repositories. Connects to your repos, explains vulnerabilities in plain English, and opens pull requests with the fix. You just review and approve.
 
-> Built for developers, not security teams.
-
----
-
-## The problem
-
-Modern development teams already have scanners. The problem is what happens after a vulnerability is found.
-
-- Is this actually important?
-- What is the business impact?
-- What should I fix first?
-- How do I fix it safely?
-- Can I get the fix reviewed without waiting for another team?
-
-Security tooling answers the first question. Security Copilot answers the rest.
+Live at [securitycopilot.com.ng](https://securitycopilot.com.ng) — or self-host in minutes with Docker.
 
 ---
 
 ## What it does
 
-Security Copilot connects to a developer's GitHub repositories, aggregates security findings, and guides the developer from finding to merged fix without requiring AppSec team intervention at every step.
+Most security tools tell you something is broken. Security Copilot tells you why it matters and fixes it.
+
+Connect a GitHub repository. Security Copilot pulls in findings from CodeQL, Dependabot, and Secret Scanning. For each finding, the AI explains the business impact in plain English, proposes a fix, and — with your approval — opens a pull request. For Dependabot alerts, it bumps the vulnerable dependency to the patched version automatically.
+
+If CodeQL and Dependabot are not enabled on a repository, Security Copilot enables them automatically and runs its own AI-powered scan of the codebase immediately, so you get findings right away rather than waiting for the next CI run.
 
 ```
-Security finding
-      ↓
-Understand (why does this matter?)
-      ↓
-Prioritize (what do I fix first?)
-      ↓
-AI proposes remediation
-      ↓
-Developer reviews and approves
-      ↓
-Pull request created
-      ↓
-Security validation runs
-      ↓
+Repository connected
+        |
+        v
+Security features enabled automatically
+(CodeQL workflow committed, Dependabot alerts on, Secret Scanning on)
+        |
+        v
+AI scans codebase directly for immediate findings
+        |
+        v
+Findings aggregated from all sources
+        |
+        v
+Click a finding → AI explains it in plain English
+        |
+        v
+Approve → pull request created automatically
+        |
+        v
 Fix ships
 ```
 
-The AI proposes and executes controlled security work. The developer retains approval authority at every step.
+---
+
+## Features
+
+- GitHub OAuth — connect repositories with one click
+- Aggregates CodeQL, Dependabot, and Secret Scanning findings
+- Auto-enables security features on connected repositories
+- AI direct scan of the codebase using DeepSeek Coder via Ollama
+- Plain-English explanation of every finding (what it is, why it matters, how to fix it)
+- Proposed code fix with one-click pull request creation
+- Automatic dependency version bumping for Dependabot alerts
+- Notification channels: email (SendByte), Slack, Discord, Telegram
+- Signed approval tokens — approve or decline fixes directly from any notification
+- Risk scoring per repository
+- AES-256-GCM encryption for all stored GitHub tokens
 
 ---
 
-## Status
+## Self-hosting
 
-Active development. Phase 1, 2 complete.
+The fastest way to run Security Copilot locally is Docker Compose. It starts PostgreSQL, Ollama, and pulls the DeepSeek Coder model automatically.
 
-### Phase 1 — Foundation
+### Prerequisites
 
-- [x] Go backend
-- [x] Health endpoint
-- [x] GitHub OAuth
-- [x] CSRF state protection (constant-time comparison)
-- [x] AES-256-GCM token encryption
-- [x] Encryption unit tests (correctness, nonce uniqueness, tamper detection, wrong-key rejection)
-- [x] PostgreSQL with Docker Compose
-- [x] Database migrations (golang-migrate)
-- [x] User persistence
-- [x] Encrypted GitHub token storage
+- Docker and Docker Compose
+- A GitHub OAuth app ([create one here](https://github.com/settings/applications/new))
+  - Set the callback URL to `http://localhost:8080/api/v1/auth/github/callback`
 
-### Phase 2 — GitHub integration
+### Setup
 
-- [x] Repository discovery
-- [x] Repository persistence
-- [x] Repository selection
-- [x] GitHub API service abstraction
-- [x] Webhook verification
-- [x] Repository event ingestion
+**1. Clone the repository**
 
-### Phase 3 — Security intelligence
+```bash
+git clone https://github.com/lhilove/security-copilot.git
+cd security-copilot
+```
 
-- [x] Security finding model
-- [x] Finding normalization and aggregation
-- [x] Severity normalization
-- [x] Risk scoring
-- [x] Business impact analysis
+**2. Build the frontend**
 
-### Phase 4 — AI remediation
+```bash
+cd frontend
+npm install
+npm run build
+cd ..
+```
 
-- [x] AI provider abstraction
-- [x] Vulnerability explanation
-- [x] Remediation generation
-- [x] Output validation
-- [x] Prompt injection defenses
+**3. Configure environment variables**
 
-### Phase 5 — Controlled remediation
+```bash
+cp backend/.env.example backend/.env
+```
 
-- [x] Remediation approval workflow
-- [x] Pull request generation
-- [x] Security validation
-- [x] Audit logging
+Generate the required secret keys:
 
-#### Phase 6 — Notifications
-- [x] Email notifications (SMTP)
-- [x] Slack notifications (Block Kit buttons)
-- [x] Discord notifications (webhook embeds)
-- [x] Telegram notifications (inline keyboard)
-- [x] Signed approval tokens (JWT, 24h expiry)
-- [x] One-click approve/decline from any channel
+```bash
+# Linux / macOS
+bash scripts/generate-keys.sh
 
-### Phase 7 — Frontend
-- [x] React dashboard
-- [x] Repository security overview
-- [x] Finding details and business impact view
-- [x] Remediation review and approval interface
-- [x] Notification bell with unread count
-- [x] Notification settings page
-- [x] Enable Security & AI Scan button
+# Windows (PowerShell)
+.\scripts\generate-keys.ps1
+```
 
-### Phase 8 — AI Direct Scan (new)
-- [x] Auto-enable CodeQL, Dependabot, Secret Scanning via GitHub API
-- [x] AI-powered direct codebase scan (DeepSeek via Ollama)
-- [x] Findings normalized and stored alongside GitHub findings
-- [x] AI scan source badge in UI
+Copy the output into `backend/.env` and fill in your GitHub OAuth credentials:
+
+```env
+GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
+GITHUB_REDIRECT_URL=http://localhost:8080/api/v1/auth/github/callback
+GITHUB_WEBHOOK_SECRET=any_random_string
+ENCRYPTION_KEY=generated_above
+JWT_SECRET=generated_above
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://ollama:11434
+AI_MODEL=deepseek-coder:6.7b
+FRONTEND_URL=http://localhost:8080
+BASE_URL=http://localhost:8080
+```
+
+**4. Start everything**
+
+```bash
+docker compose up -d
+```
+
+This starts PostgreSQL and Ollama, then pulls the DeepSeek Coder model (3.8 GB — takes a few minutes on first run). The API starts automatically once both are ready.
+
+**5. Open the app**
+
+Navigate to `http://localhost:8080` and connect your GitHub account.
+
+> The model download happens once. Subsequent starts are fast.
 
 ---
 
 ## Architecture
 
 ```
-Developer
-    ↓
-React Dashboard (planned)
-    ↓
-Go REST API
-    ↓
-PostgreSQL
-    ↓
-GitHub API
-    ↓
-AI Provider (planned)
+React Frontend
+      |
+      v
+Go REST API (Gin)
+      |
+      +-- PostgreSQL (findings, remediations, users)
+      |
+      +-- GitHub API (OAuth, findings, pull requests)
+      |
+      +-- Ollama (DeepSeek Coder 6.7B — local AI, no external API calls)
+      |
+      +-- SendByte / Slack / Discord / Telegram (notifications)
 ```
 
-The backend is written in Go. PostgreSQL is the persistent datastore. The AI layer is provider-agnostic by design.
+The AI runs entirely on your own infrastructure. No code or findings are sent to OpenAI, Anthropic, or any external AI service.
 
 ---
 
@@ -144,108 +156,63 @@ The backend is written in Go. PostgreSQL is the persistent datastore. The AI lay
 
 Security controls are applied to the product itself, not only the code it analyzes.
 
-- GitHub access tokens are encrypted at rest with AES-256-GCM before database storage
-- OAuth state is validated on every callback using constant-time comparison to prevent login CSRF
+- GitHub access tokens are encrypted at rest with AES-256-GCM
+- OAuth state is validated on every callback using constant-time comparison
 - State cookies are HttpOnly and deleted immediately after validation
+- Approval tokens for notification channels are signed JWTs with 24-hour expiry
+- Prompt injection defenses are applied at the Go layer before any content reaches the AI model
+- Code snippets sent for AI analysis are labeled as untrusted data in the system prompt
 - Encryption keys are never committed to version control
-- Database migrations run with up/down support
-- The AI remediation layer will include output validation and prompt injection defenses before any code change is proposed
+- All AI analysis is sandboxed — the model cannot execute code or make network requests
 
 ---
 
-## Getting started
+## Tech stack
 
-### Prerequisites
-
-- Go 1.22+
-- Docker and Docker Compose
-- A GitHub OAuth application ([create one here](https://github.com/settings/applications/new))
-
-### Setup
-
-1. Clone the repository
-
-```bash
-git clone https://github.com/lhilove/security-copilot.git
-cd security-copilot
-```
-
-2. Start PostgreSQL
-
-```bash
-docker compose up -d
-```
-
-3. Configure environment variables
-
-```bash
-cd backend
-cp .env.example .env
-```
-
-Edit `.env`:
-
-```env
-GITHUB_CLIENT_ID=your_github_client_id
-GITHUB_CLIENT_SECRET=your_github_client_secret
-GITHUB_REDIRECT_URL=http://localhost:8080/api/v1/auth/github/callback
-DATABASE_URL=postgres://security_copilot:security_copilot_dev@localhost:5432/security_copilot
-ENCRYPTION_KEY=your_32_byte_base64_encoded_key
-MIGRATIONS_PATH=migrations
-```
-
-Generate an encryption key:
-
-```bash
-# PowerShell
-$bytes = New-Object byte[] 32
-[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-[Convert]::ToBase64String($bytes)
-
-# Linux / macOS
-openssl rand -base64 32
-```
-
-4. Run the API
-
-```bash
-go run ./cmd/api
-```
-
-Migrations run automatically on startup.
-
-5. Test the health endpoint
-
-```bash
-curl http://localhost:8080/health
-```
-
-```json
-{"status":"ok","service":"security-copilot-api"}
-```
-
-### GitHub OAuth flow
-
-Navigate to `http://localhost:8080/api/v1/auth/github` to begin the OAuth flow. After authorization, your GitHub identity and encrypted access token are persisted to the database.
+| Layer | Technology |
+|---|---|
+| Backend | Go, Gin |
+| Database | PostgreSQL, golang-migrate |
+| AI | DeepSeek Coder 6.7B via Ollama |
+| Frontend | React, TypeScript, Vite, TanStack Query |
+| Auth | GitHub OAuth 2.0, JWT |
+| Encryption | AES-256-GCM |
+| Infrastructure | Oracle Cloud (ARM A1 Flex), Nginx, Let's Encrypt |
+| Notifications | SendByte, Slack, Discord, Telegram |
 
 ---
 
 ## Project structure
 
 ```
-Security-Copilot/
+security-copilot/
 ├── backend/
-│   ├── cmd/
-│   │   └── api/
-│   │       └── main.go
+│   ├── cmd/api/           # Entry point, server setup, HTTP handlers
 │   ├── internal/
-│   │   ├── auth/          # GitHub OAuth
+│   │   ├── ai/            # AI provider abstraction (Ollama, Nvidia)
+│   │   ├── auth/          # GitHub OAuth, JWT
 │   │   ├── config/        # Environment configuration
 │   │   ├── crypto/        # AES-256-GCM encryption
-│   │   └── database/      # PostgreSQL connection, migrations, repositories
-│   └── migrations/        # SQL up/down migrations
+│   │   ├── database/      # PostgreSQL repositories
+│   │   ├── findings/      # Finding normalization and sync
+│   │   ├── github/        # GitHub API client
+│   │   ├── notifications/ # Email, Slack, Discord, Telegram dispatch
+│   │   ├── repositories/  # Repository management
+│   │   ├── scanner/       # AI direct codebase scanner
+│   │   └── securitysetup/ # Auto-enable GitHub security features
+│   ├── migrations/        # SQL up/down migrations
+│   ├── Dockerfile
+│   └── .env.example
+├── frontend/
+│   └── src/
+│       ├── api/           # API client
+│       ├── components/    # NotificationBell
+│       └── pages/         # Dashboard, Repository, Finding, Settings
+├── scripts/
+│   ├── generate-keys.sh
+│   └── generate-keys.ps1
 ├── docker-compose.yml
-└── .gitignore
+└── README.md
 ```
 
 ---
@@ -257,21 +224,14 @@ cd backend
 go test ./...
 ```
 
-Current test coverage: `internal/crypto` (encryption/decryption, nonce uniqueness, tamper detection, wrong-key rejection).
-
 ---
 
-## What success looks like
+## Privacy
 
-The project is not measured by number of features or AI calls. The meaningful metrics are:
-
-- **Time to remediation** — how long from finding to merged fix
-- **Developer comprehension** — can the developer understand why the issue matters
-- **Remediation quality** — does the fix address the vulnerability without introducing a new one
-- **Developer autonomy** — can developers resolve security issues without waiting for AppSec intervention
+Security Copilot does not send your code to any external AI service. The AI model runs on your own infrastructure (or ours, for the hosted version). Read the full [Privacy Policy](https://securitycopilot.com.ng/privacy.html).
 
 ---
 
 ## License
 
-MIT
+MIT — [github.com/Lhilove/security-copilot](https://github.com/Lhilove/security-copilot)
